@@ -16,15 +16,15 @@ class Parser(private val tokens: List<Token>) {
 
     private fun declaration(): Stmt {
         return when {
-            match(TokenType.FUNCTION) -> functionDeclaration()
+            match(TokenType.FUNCTION) -> functionDeclaration("function")
             match(TokenType.LET) -> varDeclaration()
             else -> statement()
         }
     }
 
-    private fun functionDeclaration(): Stmt {
-        val name = consume(TokenType.IDENTIFIER, "Expect function name").lexeme
-        consume(TokenType.LPAREN, "Expect '(' after function name")
+    private fun functionDeclaration(kind: String): Stmt {
+        val name = consume(TokenType.IDENTIFIER, "Expect $kind name").lexeme
+        consume(TokenType.LPAREN, "Expect '(' after $kind name")
 
         val parameters = mutableListOf<String>()
         if (!check(TokenType.RPAREN)) {
@@ -36,7 +36,7 @@ class Parser(private val tokens: List<Token>) {
             } while (match(TokenType.COMMA))
         }
         consume(TokenType.RPAREN, "Expect ')' after parameters")
-        consume(TokenType.LBRACE, "Expect '{' before function body")
+        consume(TokenType.LBRACE, "Expect '{' before $kind body")
         val body = block()
         return Stmt.Function(name, parameters, body)
     }
@@ -54,10 +54,7 @@ class Parser(private val tokens: List<Token>) {
             match(TokenType.IF) -> ifStatement()
             match(TokenType.FOR) -> forStatement()
             match(TokenType.RETURN) -> returnStatement()
-            match(TokenType.LBRACE) -> {
-                // block() возвращает Stmt.Block, что и нужно
-                block()
-            }
+            match(TokenType.LBRACE) -> block()
             else -> expressionStatement()
         }
     }
@@ -237,6 +234,7 @@ class Parser(private val tokens: List<Token>) {
             match(TokenType.STRING) -> Expr.StringLiteral(previous().literal as String)
             match(TokenType.IDENTIFIER) -> Expr.Variable(previous().lexeme)
             match(TokenType.LBRACKET) -> matrixLiteral()
+            match(TokenType.FUNCTION) -> functionExpression()
             match(TokenType.LPAREN) -> {
                 val expr = expression()
                 consume(TokenType.RPAREN, "Expect ')' after expression")
@@ -244,6 +242,28 @@ class Parser(private val tokens: List<Token>) {
             }
             else -> throw error(peek(), "Expect expression")
         }
+    }
+
+    // ДОБАВЛЕНО: Функциональное выражение (анонимная функция)
+    private fun functionExpression(): Expr {
+        consume(TokenType.LPAREN, "Expect '(' after function")
+
+        val parameters = mutableListOf<String>()
+        if (!check(TokenType.RPAREN)) {
+            do {
+                if (parameters.size >= 255) {
+                    error(peek(), "Can't have more than 255 parameters")
+                }
+                parameters.add(consume(TokenType.IDENTIFIER, "Expect parameter name").lexeme)
+            } while (match(TokenType.COMMA))
+        }
+        consume(TokenType.RPAREN, "Expect ')' after parameters")
+
+        consume(TokenType.LBRACE, "Expect '{' before function body")
+        val body = block()
+
+        // Передаем пустое имя для анонимной функции
+        return Expr.Function("", parameters, body)
     }
 
     private fun matrixLiteral(): Expr {
@@ -273,7 +293,6 @@ class Parser(private val tokens: List<Token>) {
 
             consume(TokenType.RBRACKET, "Expect ']' after row")
         } else {
-            // Если нет скобок, это может быть один элемент
             if (check(TokenType.NUMBER)) {
                 row.add((advance().literal as Double))
             }
