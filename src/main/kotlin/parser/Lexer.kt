@@ -21,7 +21,17 @@ class Lexer(private val source: String) {
         "identity" to TokenType.IDENTITY,
         "transpose" to TokenType.TRANSPOSE,
         "rows" to TokenType.ROWS,
-        "cols" to TokenType.COLS
+        "cols" to TokenType.COLS,
+        // Функциональные ключевые слова
+        "lambda" to TokenType.LAMBDA,
+        "fn" to TokenType.FN,
+        "compose" to TokenType.COMPOSE,
+        "pipe" to TokenType.PIPE,
+
+        // Функции высшего порядка
+        "map" to TokenType.MAP,
+        "reduce" to TokenType.REDUCE,
+        "filter" to TokenType.FILTER
     )
 
     fun scanTokens(): List<Token> {

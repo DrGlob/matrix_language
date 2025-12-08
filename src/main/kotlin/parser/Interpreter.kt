@@ -12,8 +12,81 @@ class Interpreter {
     private val globals = Environment()
     private var environment = globals
 
+    // Специальный объект для пустого возврата
+    companion object {
+        val UNIT = object : Any() {
+            override fun toString(): String = "unit"
+        }
+    }
+
     init {
-        // Встроенные функции
+        // Встроенные функции - возвращают не-null значения
+        globals.define("map", object : MatrixCallable {
+            override fun arity(): Int = 2
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                val matrix = arguments[0] as Matrix
+                val function = arguments[1] as MatrixCallable
+
+                val newRows = matrix.rows.map { row ->
+                    row.map { value ->
+                        val result = function.call(interpreter, listOf(value))
+                        result as Double
+                    }
+                }
+                return Matrix(newRows)
+            }
+        })
+
+        globals.define("reduce", object : MatrixCallable {
+            override fun arity(): Int = 3
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                val matrix = arguments[0] as Matrix
+                val initial = arguments[1] as Double
+                val function = arguments[2] as MatrixCallable
+
+                var accumulator = initial
+                for (row in matrix.rows) {
+                    for (value in row) {
+                        accumulator = function.call(interpreter, listOf(accumulator, value)) as Double
+                    }
+                }
+                return accumulator
+            }
+        })
+
+        globals.define("filter", object : MatrixCallable {
+            override fun arity(): Int = 2
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                val matrix = arguments[0] as Matrix
+                val predicate = arguments[1] as MatrixCallable
+
+                val filteredRows = matrix.rows.map { row ->
+                    row.filter { value ->
+                        val result = predicate.call(interpreter, listOf(value))
+                        (result as? Double) != 0.0
+                    }
+                }.filter { it.isNotEmpty() }
+
+                return Matrix(filteredRows)
+            }
+        })
+
+        globals.define("compose", object : MatrixCallable {
+            override fun arity(): Int = 2
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                val f = arguments[0] as MatrixCallable
+                val g = arguments[1] as MatrixCallable
+
+                return object : MatrixCallable {
+                    override fun arity(): Int = 1
+                    override fun call(interpreter: Interpreter, args: List<Any?>): Any {
+                        val intermediate = g.call(interpreter, args)
+                        return f.call(interpreter, listOf(intermediate))
+                    }
+                }
+            }
+        })
+
         globals.define("zeros", object : MatrixCallable {
             override fun arity(): Int = 2
             override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
@@ -86,7 +159,6 @@ class Interpreter {
         } catch (error: RuntimeError) {
             println("Runtime error: ${error.message}")
         } catch (error: ReturnException) {
-            // ReturnException не должен выбрасываться на верхнем уровне
             println("Warning: return statement outside function")
         } catch (error: Exception) {
             println("Error: ${error.message}")
@@ -146,9 +218,7 @@ class Interpreter {
 
     private fun evaluate(expr: Expr): Any? {
         return when (expr) {
-            is Expr.MatrixLiteral -> {
-                Matrix(expr.rows)
-            }
+            is Expr.MatrixLiteral -> Matrix(expr.rows)
             is Expr.NumberLiteral -> expr.value
             is Expr.StringLiteral -> expr.value
             is Expr.Variable -> environment.get(expr.name)
@@ -249,8 +319,59 @@ class Interpreter {
                     throw RuntimeError(dummyToken, "Only matrices have properties")
                 }
             }
-            is Expr.Function -> {
-                MatrixFunction(expr, environment)
+            is Expr.Function -> MatrixFunction(expr, environment)
+            is Expr.Lambda -> {
+                object : MatrixCallable {
+                    override fun arity(): Int = expr.params.size
+                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                        val environment = Environment(this@Interpreter.environment)
+
+                        for ((i, param) in expr.params.withIndex()) {
+                            environment.define(param, arguments[i])
+                        }
+
+                        val previousEnv = this@Interpreter.environment
+                        try {
+                            this@Interpreter.environment = environment
+                            return evaluate(expr.body) ?: UNIT
+                        } finally {
+                            this@Interpreter.environment = previousEnv
+                        }
+                    }
+
+                    override fun toString(): String =
+                        "<lambda(${expr.params.joinToString(", ")})>"
+                }
+            }
+            is Expr.Compose -> {
+                val f = evaluate(expr.outer) as MatrixCallable
+                val g = evaluate(expr.inner) as MatrixCallable
+
+                object : MatrixCallable {
+                    override fun arity(): Int = g.arity()
+                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                        val intermediate = g.call(interpreter, arguments)
+                        return f.call(interpreter, listOf(intermediate))
+                    }
+
+                    override fun toString(): String =
+                        "<compose: ${f} ∘ ${g}>"
+                }
+            }
+            is Expr.PartialApply -> {
+                val callee = evaluate(expr.callee) as MatrixCallable
+                val appliedArgs = expr.appliedArgs.map { evaluate(it) }
+
+                object : MatrixCallable {
+                    override fun arity(): Int = callee.arity() - appliedArgs.size
+                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                        val allArgs = appliedArgs + arguments
+                        return callee.call(interpreter, allArgs)
+                    }
+
+                    override fun toString(): String =
+                        "<partial: ${callee}(${appliedArgs.joinToString(", ")})>"
+                }
             }
         }
     }
@@ -259,6 +380,7 @@ class Interpreter {
         return when (obj) {
             null -> false
             is Boolean -> obj
+            UNIT -> false
             else -> true
         }
     }
@@ -275,6 +397,7 @@ class Interpreter {
     private fun stringify(obj: Any?): String {
         return when (obj) {
             null -> "nil"
+            UNIT -> "unit"
             is Double -> {
                 val text = obj.toString()
                 if (text.endsWith(".0")) {
@@ -299,7 +422,7 @@ class Interpreter {
 
 interface MatrixCallable {
     fun arity(): Int
-    fun call(interpreter: Interpreter, arguments: List<Any?>): Any?
+    fun call(interpreter: Interpreter, arguments: List<Any?>): Any  // Изменено с Any? на Any
 }
 
 class MatrixFunction(
@@ -314,7 +437,7 @@ class MatrixFunction(
         }
     }
 
-    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
         val environment = Environment(closure)
 
         val params = when (declaration) {
@@ -337,10 +460,10 @@ class MatrixFunction(
                 )
             }
         } catch (returnValue: ReturnException) {
-            return returnValue.value
+            return returnValue.value ?: Interpreter.UNIT
         }
 
-        return null
+        return Interpreter.UNIT
     }
 
     override fun toString(): String = "<function>"

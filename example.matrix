@@ -1,6 +1,14 @@
 let a = 1;
 for(i in 1..5) {
     a = a + 1;
-    print(a);
 }
-print(a);
+
+if (a == 5) {
+    print(a);
+    let b = 10;
+}
+
+let add = function(a, b) { return a + b; };
+print(add(2, 3));
+let x = add(7,9);
+print(x);
