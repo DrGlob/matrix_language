@@ -1,11 +1,11 @@
 package cli
 
 
-import org.example.parser.Parser
 import org.example.parser.Interpreter
-import parser.Lexer
-import parser.Token
-import parser.TokenType
+import org.example.parser.Lexer
+import org.example.parser.Parser
+import org.example.parser.Token
+import org.example.parser.TokenType
 import java.io.File
 import kotlin.system.exitProcess
 

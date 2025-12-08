@@ -1,4 +1,4 @@
-package parser
+package org.example.parser
 
 class Lexer(private val source: String) {
     private val tokens = mutableListOf<Token>()

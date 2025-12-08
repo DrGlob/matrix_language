@@ -1,7 +1,7 @@
 // TestLexer.kt
 package org.example
 
-import parser.Lexer
+import org.example.parser.Lexer
 
 
 fun main() {

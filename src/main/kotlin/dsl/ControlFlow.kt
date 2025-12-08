@@ -17,12 +17,11 @@ class ControlFlow(private val context: MatrixContext) {
         initial: T,
         body: (T) -> T
     ): T {
-        return if (condition(initial)) {
-            val newValue = body(initial)
-            loop(condition, update, update(newValue), body)
-        } else {
-            initial
-        }
+        if (!condition(initial)) return initial
+
+        val newValue = body(initial)
+        val nextValue = update(newValue)
+        return loop(condition, update, nextValue, body)
     }
 
     // Functional for-loop equivalent
