@@ -12,9 +12,9 @@ enum class TokenType {
     // Функции
     ZEROS, ONES, IDENTITY, TRANSPOSE, ROWS, COLS,
 
-    LAMBDA, FN, COMPOSE, PIPE, ARROW,
+//    LAMBDA, FN, COMPOSE, PIPE, ARROW,
 
-    MAP, REDUCE, FILTER,
+//    MAP, REDUCE, FILTER,
 
     // Операторы
     PLUS, MINUS, MULTIPLY, DIVIDE, ASSIGN,
@@ -69,9 +69,6 @@ sealed class Stmt {
     data class Block(val statements: List<Stmt>) : Stmt()
     data class If(val condition: Expr, val thenBranch: Stmt, val elseBranch: Stmt?) : Stmt()
     data class For(val variable: String, val rangeStart: Int, val rangeEnd: Int, val body: Stmt) : Stmt()
-//    data class Function(val name: String, val params: List<String>, val body: Stmt) : Stmt()
-//    data class Function(val name: String, val params: List<String>, val body: Stmt.Block) : Expr()
-//    data class Function(val name: String?, val params: List<String>, val body: Stmt.Block) : Expr()
     data class Function(val name: String, val params: List<String>, val body: Stmt.Block) : Stmt()
     data class Return(val keyword: Token, val value: Expr?) : Stmt()
 }

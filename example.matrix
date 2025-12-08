@@ -12,3 +12,9 @@ let add = function(a, b) { return a + b; };
 print(add(2, 3));
 let x = add(7,9);
 print(x);
+
+let double = function(x) { return x * 2; };
+
+let matrix = [[1, 2], [3, 4]];
+let doubledMatrix = map(matrix, double);
+print(doubledMatrix);
