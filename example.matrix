@@ -1,0 +1,6 @@
+let a = 1;
+for(i in 1..5) {
+    a = a + 1;
+    print(a);
+}
+print(a);
