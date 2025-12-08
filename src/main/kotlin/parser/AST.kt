@@ -1,4 +1,4 @@
-package parser
+package org.example.parser
 
 // Типы токенов
 
@@ -58,4 +58,3 @@ sealed class Stmt {
     data class Function(val name: String, val params: List<String>, val body: Stmt) : Stmt()
     data class Return(val keyword: Token, val value: Expr?) : Stmt()
 }
-

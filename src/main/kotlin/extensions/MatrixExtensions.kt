@@ -23,5 +23,9 @@ fun Matrix.normalize(): Matrix {
     val mean = mean()
     val maxVal = rows.flatten().maxOrNull() ?: 0.0
     val minVal = rows.flatten().minOrNull() ?: 0.0
+    if (maxVal == minVal) {
+        // Avoid division by zero for constant matrices
+        return Matrix(List(numRows) { List(numCols) { 0.0 } })
+    }
     return map { (it - minVal) / (maxVal - minVal) }
 }

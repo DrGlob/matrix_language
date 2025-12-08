@@ -2,10 +2,6 @@ package org.example.parser
 
 import org.example.core.Matrix
 import org.example.core.MatrixFactory
-import parser.Expr
-import parser.Stmt
-import parser.Token
-import parser.TokenType
 
 class Parser(private val tokens: List<Token>) {
     private var current = 0

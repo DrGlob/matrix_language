@@ -1,5 +1,7 @@
 package org.example.core
 
+import org.example.utils.MatrixValidator
+
 interface MatrixOperations {
     operator fun plus(other: Matrix): Matrix
     operator fun minus(other: Matrix): Matrix
@@ -9,30 +11,35 @@ interface MatrixOperations {
 }
 
 // Делаем Matrix реализацией этого интерфейса
-data class Matrix(val rows: List<List<Double>>) : MatrixOperations {
-    val numRows: Int = rows.size
-    val numCols: Int = if (rows.isNotEmpty()) rows[0].size else 0
+class Matrix private constructor(private val safeRows: List<List<Double>>) : MatrixOperations {
+    val rows: List<List<Double>> = safeRows
+    val numRows: Int = safeRows.size
+    val numCols: Int = if (safeRows.isNotEmpty()) safeRows[0].size else 0
 
     init {
-        require(rows.all { it.size == numCols }) {
+        require(safeRows.all { it.size == numCols }) {
             "All rows must have the same number of columns"
+        }
+    }
+
+    companion object {
+        operator fun invoke(rows: List<List<Double>>): Matrix {
+            // Defensive copy to prevent external mutation of provided lists
+            val copiedRows = rows.map { it.toList() }
+            return Matrix(copiedRows)
         }
     }
 
     // Реализация операций
     override operator fun plus(other: Matrix): Matrix {
-        require(numRows == other.numRows && numCols == other.numCols) {
-            "Matrices must have the same dimensions for addition"
-        }
+        MatrixValidator.validateDimensionsForAddition(this, other)
         return Matrix(rows.zip(other.rows) { row1, row2 ->
             row1.zip(row2) { a, b -> a + b }
         })
     }
 
     override operator fun minus(other: Matrix): Matrix {
-        require(numRows == other.numRows && numCols == other.numCols) {
-            "Matrices must have the same dimensions for subtraction"
-        }
+        MatrixValidator.validateDimensionsForSubtraction(this, other)
         return Matrix(rows.zip(other.rows) { row1, row2 ->
             row1.zip(row2) { a, b -> a - b }
         })
@@ -43,9 +50,7 @@ data class Matrix(val rows: List<List<Double>>) : MatrixOperations {
     }
 
     override operator fun times(other: Matrix): Matrix {
-        require(numCols == other.numRows) {
-            "Number of columns in first matrix must equal number of rows in second"
-        }
+        MatrixValidator.validateDimensionsForMultiplication(this, other)
         return Matrix((0 until numRows).map { i ->
             (0 until other.numCols).map { j ->
                 (0 until numCols).sumOf { k -> rows[i][k] * other.rows[k][j] }
@@ -67,6 +72,11 @@ data class Matrix(val rows: List<List<Double>>) : MatrixOperations {
         newRows[row][col] = value
         return Matrix(newRows)
     }
+
+    override fun equals(other: Any?): Boolean =
+        other is Matrix && rows == other.rows
+
+    override fun hashCode(): Int = rows.hashCode()
 
     override fun toString(): String {
         return rows.joinToString("\n") { row -> row.joinToString(" ") }
