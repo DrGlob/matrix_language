@@ -1,20 +1,19 @@
-let a = 1;
-for(i in 1..5) {
-    a = a + 1;
-}
+let base = 1;
+let decision = if base == 1 then 10 else 0;
 
-if (a == 5) {
-    print(a);
-    let b = 10;
-}
+let scoped = let temp = 5 in temp * decision;
 
-let add = function(a, b) { return a + b; };
-print(add(2, 3));
-let x = add(7,9);
-print(x);
+let numbers = [1, 2, 3, 4];
+let doubled = numbers.map { x -> x * 2 };
+let sum = numbers.reduce(0) { acc, x -> acc + x };
 
-let double = function(x) { return x * 2; };
+let more = [10, 20, 30, 40];
+let paired = numbers.zip(more);
+let parts = paired.unzip();
 
-let matrix = [[1, 2], [3, 4]];
-let doubledMatrix = map(matrix, double);
-print(doubledMatrix);
+print(decision);
+print(scoped);
+print(doubled);
+print(sum);
+print(parts.first);
+print(parts.second);

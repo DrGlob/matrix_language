@@ -23,63 +23,51 @@ class Interpreter {
         // Встроенные функции - возвращают не-null значения
         globals.define("map", object : MatrixCallable {
             override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
-                val matrix = arguments[0] as Matrix
-                val function = arguments[1] as MatrixCallable
-
-                val newRows = matrix.rows.map { row ->
-                    row.map { value ->
-                        val result = function.call(interpreter, listOf(value))
-                        result as Double
-                    }
-                }
-                return Matrix(newRows)
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+                val function = interpreter.expectCallable("map", arguments[1])
+                return interpreter.applyMap(arguments[0], function)
             }
         })
 
         globals.define("reduce", object : MatrixCallable {
             override fun arity(): Int = 3
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
-                val matrix = arguments[0] as Matrix
-                val initial = arguments[1] as Double
-                val function = arguments[2] as MatrixCallable
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+                val function = interpreter.expectCallable("reduce", arguments[2])
+                return interpreter.applyReduce(arguments[0], arguments[1], function)
+            }
+        })
 
-                var accumulator = initial
-                for (row in matrix.rows) {
-                    for (value in row) {
-                        accumulator = function.call(interpreter, listOf(accumulator, value)) as Double
-                    }
-                }
-                return accumulator
+        globals.define("zip", object : MatrixCallable {
+            override fun arity(): Int = 2
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+                return interpreter.applyZip(arguments[0], arguments[1])
+            }
+        })
+
+        globals.define("unzip", object : MatrixCallable {
+            override fun arity(): Int = 1
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+                return interpreter.applyUnzip(arguments[0])
             }
         })
 
         globals.define("filter", object : MatrixCallable {
             override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
-                val matrix = arguments[0] as Matrix
-                val predicate = arguments[1] as MatrixCallable
-
-                val filteredRows = matrix.rows.map { row ->
-                    row.filter { value ->
-                        val result = predicate.call(interpreter, listOf(value))
-                        (result as? Double) != 0.0
-                    }
-                }.filter { it.isNotEmpty() }
-
-                return Matrix(filteredRows)
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
+                val predicate = interpreter.expectCallable("filter", arguments[1])
+                return interpreter.applyFilter(arguments[0], predicate)
             }
         })
 
         globals.define("compose", object : MatrixCallable {
             override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 val f = arguments[0] as MatrixCallable
                 val g = arguments[1] as MatrixCallable
 
                 return object : MatrixCallable {
                     override fun arity(): Int = 1
-                    override fun call(interpreter: Interpreter, args: List<Any?>): Any {
+                    override fun call(interpreter: Interpreter, args: List<Any?>): Any? {
                         val intermediate = g.call(interpreter, args)
                         return f.call(interpreter, listOf(intermediate))
                     }
@@ -89,7 +77,7 @@ class Interpreter {
 
         globals.define("zeros", object : MatrixCallable {
             override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 val rows = (arguments[0] as Double).toInt()
                 val cols = (arguments[1] as Double).toInt()
                 return MatrixFactory.zeros(rows, cols)
@@ -99,7 +87,7 @@ class Interpreter {
 
         globals.define("ones", object : MatrixCallable {
             override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 val rows = (arguments[0] as Double).toInt()
                 val cols = (arguments[1] as Double).toInt()
                 return MatrixFactory.ones(rows, cols)
@@ -109,7 +97,7 @@ class Interpreter {
 
         globals.define("identity", object : MatrixCallable {
             override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 val size = (arguments[0] as Double).toInt()
                 return MatrixFactory.identity(size)
             }
@@ -118,7 +106,7 @@ class Interpreter {
 
         globals.define("transpose", object : MatrixCallable {
             override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 return (arguments[0] as Matrix).transpose()
             }
             override fun toString(): String = "<native function transpose>"
@@ -126,7 +114,7 @@ class Interpreter {
 
         globals.define("rows", object : MatrixCallable {
             override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 return (arguments[0] as Matrix).numRows.toDouble()
             }
             override fun toString(): String = "<native function rows>"
@@ -134,7 +122,7 @@ class Interpreter {
 
         globals.define("cols", object : MatrixCallable {
             override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 return (arguments[0] as Matrix).numCols.toDouble()
             }
             override fun toString(): String = "<native function cols>"
@@ -142,7 +130,7 @@ class Interpreter {
 
         globals.define("norm", object : MatrixCallable {
             override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                 val matrix = arguments[0] as Matrix
                 val sum = matrix.rows.flatten().sumOf { it * it }
                 return sqrt(sum)
@@ -187,12 +175,6 @@ class Interpreter {
                     execute(stmt.elseBranch)
                 }
             }
-            is Stmt.For -> {
-                for (i in stmt.rangeStart until stmt.rangeEnd) {
-                    environment.define(stmt.variable, i.toDouble())
-                    execute(stmt.body)
-                }
-            }
             is Stmt.Function -> {
                 val function = MatrixFunction(stmt, environment)
                 environment.define(stmt.name, function)
@@ -227,9 +209,21 @@ class Interpreter {
                 environment.assign(expr.name, value)
                 value
             }
-            is Expr.Conditional -> {
+            is Expr.IfExpr -> {
                 val condition = evaluate(expr.condition)
                 if (isTruthy(condition)) evaluate(expr.thenBranch) else evaluate(expr.elseBranch)
+            }
+            is Expr.LetInExpr -> {
+                val bound = evaluate(expr.boundExpr)
+                val previous = environment
+                val scoped = Environment(environment)
+                try {
+                    scoped.define(expr.name, bound)
+                    environment = scoped
+                    evaluate(expr.bodyExpr)
+                } finally {
+                    environment = previous
+                }
             }
             is Expr.Binary -> {
                 val left = evaluate(expr.left)
@@ -290,44 +284,14 @@ class Interpreter {
                     else -> throw RuntimeError(expr.operator, "Unknown operator")
                 }
             }
-            is Expr.Call -> {
-                val callee = evaluate(expr.callee)
-                val arguments = expr.args.map { evaluate(it) }
-
-                if (callee is MatrixCallable) {
-                    if (arguments.size != callee.arity()) {
-                        val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
-                        throw RuntimeError(dummyToken,
-                            "Expected ${callee.arity()} arguments but got ${arguments.size}")
-                    }
-                    return callee.call(this, arguments)
-                }
-
-                val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
-                throw RuntimeError(dummyToken, "Can only call functions")
-            }
-            is Expr.Get -> {
-                val obj = evaluate(expr.obj)
-                if (obj is Matrix) {
-                    when (expr.name) {
-                        "rows" -> obj.numRows.toDouble()
-                        "cols" -> obj.numCols.toDouble()
-                        "transpose" -> obj.transpose()
-                        else -> {
-                            val dummyToken = Token(TokenType.IDENTIFIER, "property_access", null, 0, 0)
-                            throw RuntimeError(dummyToken, "Undefined property '${expr.name}'")
-                        }
-                    }
-                } else {
-                    val dummyToken = Token(TokenType.IDENTIFIER, "property_access", null, 0, 0)
-                    throw RuntimeError(dummyToken, "Only matrices have properties")
-                }
-            }
+            is Expr.CallExpr -> evaluateCall(expr)
+            is Expr.MethodCallExpr -> evaluateMethodCall(expr)
+            is Expr.PropertyAccess -> evaluatePropertyAccess(expr)
             is Expr.Function -> MatrixFunction(expr, environment)
-            is Expr.Lambda -> {
+            is Expr.LambdaExpr -> {
                 object : MatrixCallable {
                     override fun arity(): Int = expr.params.size
-                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
                         val environment = Environment(this@Interpreter.environment)
 
                         for ((i, param) in expr.params.withIndex()) {
@@ -347,36 +311,214 @@ class Interpreter {
                         "<lambda(${expr.params.joinToString(", ")})>"
                 }
             }
-            is Expr.Compose -> {
-                val f = evaluate(expr.outer) as MatrixCallable
-                val g = evaluate(expr.inner) as MatrixCallable
+        }
+    }
 
-                object : MatrixCallable {
-                    override fun arity(): Int = g.arity()
-                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
-                        val intermediate = g.call(interpreter, arguments)
-                        return f.call(interpreter, listOf(intermediate))
-                    }
+    private fun evaluateCall(expr: Expr.CallExpr): Any? {
+        val callee = evaluate(expr.callee)
+        val arguments = expr.args.map { evaluate(it) }
 
-                    override fun toString(): String =
-                        "<compose: ${f} ∘ ${g}>"
+        if (callee is MatrixCallable) {
+            if (arguments.size != callee.arity()) {
+                val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
+                throw RuntimeError(dummyToken,
+                    "Expected ${callee.arity()} arguments but got ${arguments.size}")
+            }
+            return callee.call(this, arguments)
+        }
+
+        val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
+        throw RuntimeError(dummyToken, "Can only call functions")
+    }
+
+    private fun evaluateMethodCall(expr: Expr.MethodCallExpr): Any? {
+        val receiver = evaluate(expr.receiver)
+        val args = expr.args.map { evaluate(it) }
+
+        return when (expr.method) {
+            "map" -> {
+                if (args.isEmpty()) {
+                    throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
+                        "Method '${expr.method}' expects a lambda")
+                }
+                val fn = expectCallable("map", args.getOrNull(0))
+                applyMap(receiver, fn)
+            }
+            "reduce" -> {
+                if (args.size < 2) {
+                    throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
+                        "Method '${expr.method}' expects initial value and lambda")
+                }
+                val initial = args.getOrNull(0)
+                val fn = expectCallable("reduce", args.getOrNull(1))
+                applyReduce(receiver, initial, fn)
+            }
+            "zip" -> {
+                val other = args.getOrNull(0)
+                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
+                        "Method '${expr.method}' expects another collection")
+                applyZip(receiver, other)
+            }
+            "unzip" -> applyUnzip(receiver)
+            else -> {
+                val dummyToken = Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
+                throw RuntimeError(dummyToken, "Unknown method '${expr.method}'")
+            }
+        }
+    }
+
+    private fun evaluatePropertyAccess(expr: Expr.PropertyAccess): Any? {
+        val obj = evaluate(expr.receiver)
+        return when (obj) {
+            is Matrix -> {
+                when (expr.name) {
+                    "rows" -> obj.numRows.toDouble()
+                    "cols" -> obj.numCols.toDouble()
+                    "transpose" -> obj.transpose()
+                    else -> throw RuntimeError(
+                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                        "Undefined property '${expr.name}' on matrix"
+                    )
                 }
             }
-            is Expr.PartialApply -> {
-                val callee = evaluate(expr.callee) as MatrixCallable
-                val appliedArgs = expr.appliedArgs.map { evaluate(it) }
-
-                object : MatrixCallable {
-                    override fun arity(): Int = callee.arity() - appliedArgs.size
-                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
-                        val allArgs = appliedArgs + arguments
-                        return callee.call(interpreter, allArgs)
-                    }
-
-                    override fun toString(): String =
-                        "<partial: ${callee}(${appliedArgs.joinToString(", ")})>"
+            is Pair<*, *> -> {
+                when (expr.name) {
+                    "first" -> obj.first
+                    "second" -> obj.second
+                    else -> throw RuntimeError(
+                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                        "Undefined property '${expr.name}' on pair"
+                    )
                 }
             }
+            is List<*> -> {
+                when (expr.name) {
+                    "size" -> obj.size.toDouble()
+                    else -> throw RuntimeError(
+                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                        "Undefined property '${expr.name}' on list"
+                    )
+                }
+            }
+            else -> {
+                val dummyToken = Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
+                throw RuntimeError(dummyToken, "Undefined property '${expr.name}'")
+            }
+        }
+    }
+
+    private fun expectCallable(name: String, value: Any?): MatrixCallable {
+        return value as? MatrixCallable ?: throw RuntimeError(
+            Token(TokenType.IDENTIFIER, name, null, 0, 0),
+            "Expected lambda/function as argument for '$name'"
+        )
+    }
+
+    private fun checkArity(expected: Int, callable: MatrixCallable, name: String) {
+        if (callable.arity() != expected) {
+            throw RuntimeError(
+                Token(TokenType.IDENTIFIER, name, null, 0, 0),
+                "Expected function with $expected parameter(s) for '$name'"
+            )
+        }
+    }
+
+    private fun applyMap(target: Any?, function: MatrixCallable): Any {
+        checkArity(1, function, "map")
+        return when (target) {
+            is Matrix -> {
+                Matrix(target.rows.map { row ->
+                    row.map { value ->
+                        val result = function.call(this, listOf(value))
+                        (result as? Double) ?: throw RuntimeError(
+                            Token(TokenType.IDENTIFIER, "map", null, 0, 0),
+                            "Matrix map expects lambda to return number"
+                        )
+                    }
+                })
+            }
+            is List<*> -> target.map { function.call(this, listOf(it)) }
+            else -> throw RuntimeError(
+                Token(TokenType.IDENTIFIER, "map", null, 0, 0),
+                "Can only map over matrices or lists"
+            )
+        }
+    }
+
+    private fun applyReduce(target: Any?, initial: Any?, function: MatrixCallable): Any? {
+        checkArity(2, function, "reduce")
+        val items = flattenCollection(target, "reduce")
+        var accumulator = initial
+        for (value in items) {
+            accumulator = function.call(this, listOf(accumulator, value))
+        }
+        return accumulator
+    }
+
+    private fun applyFilter(target: Any?, predicate: MatrixCallable): Any {
+        checkArity(1, predicate, "filter")
+        return when (target) {
+            is Matrix -> {
+                val filteredRows = target.rows.map { row ->
+                    row.filter { value -> isTruthy(predicate.call(this, listOf(value))) }
+                }.filter { it.isNotEmpty() }
+                if (filteredRows.isEmpty()) return Matrix(emptyList())
+                val width = filteredRows.first().size
+                if (!filteredRows.all { it.size == width }) {
+                    throw RuntimeError(
+                        Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
+                        "Filter over matrix must keep consistent row sizes"
+                    )
+                }
+                Matrix(filteredRows)
+            }
+            is List<*> -> target.filter { isTruthy(predicate.call(this, listOf(it))) }
+            else -> throw RuntimeError(
+                Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
+                "Can only filter matrices or lists"
+            )
+        }
+    }
+
+    private fun applyZip(left: Any?, right: Any?): List<Pair<Any?, Any?>> {
+        val leftItems = flattenCollection(left, "zip")
+        val rightItems = flattenCollection(right, "zip")
+        val size = minOf(leftItems.size, rightItems.size)
+        return (0 until size).map { i -> Pair(leftItems[i], rightItems[i]) }
+    }
+
+    private fun applyUnzip(value: Any?): Pair<List<Any?>, List<Any?>> {
+        val pairs = when (value) {
+            is List<*> -> value
+            else -> throw RuntimeError(
+                Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
+                "unzip expects a list of pairs"
+            )
+        }
+
+        val first = mutableListOf<Any?>()
+        val second = mutableListOf<Any?>()
+        for (pair in pairs) {
+            if (pair !is Pair<*, *>) {
+                throw RuntimeError(
+                    Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
+                    "unzip expects a list of pairs"
+                )
+            }
+            first.add(pair.first)
+            second.add(pair.second)
+        }
+        return Pair(first, second)
+    }
+
+    private fun flattenCollection(target: Any?, opName: String): List<Any?> {
+        return when (target) {
+            is Matrix -> target.rows.flatten()
+            is List<*> -> target.toList()
+            else -> throw RuntimeError(
+                Token(TokenType.IDENTIFIER, opName, null, 0, 0),
+                "$opName expects a matrix or a list"
+            )
         }
     }
 
@@ -410,6 +552,8 @@ class Interpreter {
                     "%.4f".format(obj)
                 }
             }
+            is Pair<*, *> -> "(${stringify(obj.first)}, ${stringify(obj.second)})"
+            is List<*> -> obj.joinToString(prefix = "[", postfix = "]") { stringify(it) }
             is Matrix -> {
                 if (obj.numRows <= 5 && obj.numCols <= 5) {
                     obj.rows.joinToString("\n") { row ->
@@ -426,7 +570,7 @@ class Interpreter {
 
 interface MatrixCallable {
     fun arity(): Int
-    fun call(interpreter: Interpreter, arguments: List<Any?>): Any  // Изменено с Any? на Any
+    fun call(interpreter: Interpreter, arguments: List<Any?>): Any?
 }
 
 class MatrixFunction(
@@ -441,7 +585,7 @@ class MatrixFunction(
         }
     }
 
-    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any {
+    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
         val environment = Environment(closure)
 
         val params = when (declaration) {

@@ -10,6 +10,7 @@ class Lexer(private val source: String) {
     private val keywords = mapOf(
         "let" to TokenType.LET,
         "if" to TokenType.IF,
+        "then" to TokenType.THEN,
         "else" to TokenType.ELSE,
         "for" to TokenType.FOR,
         "in" to TokenType.IN,
@@ -63,7 +64,13 @@ class Lexer(private val source: String) {
                 }
             }
             '+' -> addToken(TokenType.PLUS)
-            '-' -> addToken(TokenType.MINUS)
+            '-' -> {
+                if (match('>')) {
+                    addToken(TokenType.ARROW)
+                } else {
+                    addToken(TokenType.MINUS)
+                }
+            }
             '*' -> addToken(TokenType.MULTIPLY)
             '=' -> addToken(if (match('=')) TokenType.EQ else TokenType.ASSIGN)
             '!' -> addToken(if (match('=')) TokenType.NEQ else throw error("Unexpected character '$c'"))

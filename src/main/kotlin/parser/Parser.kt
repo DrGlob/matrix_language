@@ -1,8 +1,5 @@
 package org.example.parser
 
-import org.example.core.Matrix
-import org.example.core.MatrixFactory
-
 class Parser(private val tokens: List<Token>) {
     private var current = 0
 
@@ -52,9 +49,9 @@ class Parser(private val tokens: List<Token>) {
         return when {
             match(TokenType.PRINT) -> printStatement()
             match(TokenType.IF) -> ifStatement()
-            match(TokenType.FOR) -> forStatement()
             match(TokenType.RETURN) -> returnStatement()
             match(TokenType.LBRACE) -> block()
+            match(TokenType.FOR) -> throw error(previous(), "'for' loops are no longer supported")
             else -> expressionStatement()
         }
     }
@@ -66,34 +63,20 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun ifStatement(): Stmt {
-        consume(TokenType.LPAREN, "Expect '(' after 'if'")
-        val condition = expression()
-        consume(TokenType.RPAREN, "Expect ')' after condition")
+        val condition = if (match(TokenType.LPAREN)) {
+            val expr = expression()
+            consume(TokenType.RPAREN, "Expect ')' after condition")
+            expr
+        } else {
+            expression()
+        }
+
+        match(TokenType.THEN) // optional for statement-form
 
         val thenBranch = statement()
         val elseBranch = if (match(TokenType.ELSE)) statement() else null
 
         return Stmt.If(condition, thenBranch, elseBranch)
-    }
-
-    private fun forStatement(): Stmt {
-        consume(TokenType.LPAREN, "Expect '(' after 'for'")
-        val variable = consume(TokenType.IDENTIFIER, "Expect variable name").lexeme
-        consume(TokenType.IN, "Expect 'in' after variable")
-
-        val start = consume(TokenType.NUMBER, "Expect start number").literal as Double
-        val rangeStart = start.toInt()
-
-        consume(TokenType.DOTDOT, "Expect '..' in range")
-
-        val end = consume(TokenType.NUMBER, "Expect end number").literal as Double
-        val rangeEnd = end.toInt()
-
-        consume(TokenType.RPAREN, "Expect ')' after for clause")
-        consume(TokenType.LBRACE, "Expect '{' before for body")
-
-        val body = block()
-        return Stmt.For(variable, rangeStart, rangeEnd, body)
     }
 
     private fun returnStatement(): Stmt {
@@ -118,21 +101,29 @@ class Parser(private val tokens: List<Token>) {
         return Stmt.Expression(expr)
     }
 
-    private fun expression(): Expr = conditional()
+    private fun expression(): Expr = letExpression()
 
-    private fun conditional(): Expr {
-        if (match(TokenType.IF)) {
-            consume(TokenType.LPAREN, "Expect '(' after 'if'")
-            val condition = expression()
-            consume(TokenType.RPAREN, "Expect ')' after condition")
-
-            val thenBranch = expression()
-            consume(TokenType.ELSE, "Expect 'else' after if branch")
-            val elseBranch = expression()
-
-            return Expr.Conditional(condition, thenBranch, elseBranch)
+    private fun letExpression(): Expr {
+        if (match(TokenType.LET)) {
+            val name = consume(TokenType.IDENTIFIER, "Expect variable name")
+            consume(TokenType.ASSIGN, "Expect '=' after variable name")
+            val boundExpr = expression()
+            consume(TokenType.IN, "Expect 'in' after bound expression")
+            val bodyExpr = expression()
+            return Expr.LetInExpr(name.lexeme, boundExpr, bodyExpr)
         }
+        return ifExpression()
+    }
 
+    private fun ifExpression(): Expr {
+        if (match(TokenType.IF)) {
+            val condition = expression()
+            consume(TokenType.THEN, "Expect 'then' after condition")
+            val thenBranch = expression()
+            consume(TokenType.ELSE, "Expect 'else' after then branch")
+            val elseBranch = expression()
+            return Expr.IfExpr(condition, thenBranch, elseBranch)
+        }
         return assignment()
     }
 
@@ -216,13 +207,26 @@ class Parser(private val tokens: List<Token>) {
         var expr = primary()
 
         while (true) {
-            if (match(TokenType.LPAREN)) {
-                expr = finishCall(expr)
-            } else if (match(TokenType.DOT)) {
-                val name = consume(TokenType.IDENTIFIER, "Expect property name after '.'")
-                expr = Expr.Get(expr, name.lexeme)
-            } else {
-                break
+            when {
+                match(TokenType.LPAREN) -> {
+                    expr = finishCall(expr)
+                }
+                match(TokenType.DOT) -> {
+                    val name = consume(TokenType.IDENTIFIER, "Expect property or method name after '.'").lexeme
+                    if (match(TokenType.LPAREN)) {
+                        val arguments = parseArgumentList()
+                        val trailing = tryParseLambda()
+                        trailing?.let { arguments.add(it) }
+                        expr = Expr.MethodCallExpr(expr, name, arguments)
+                    } else if (check(TokenType.LBRACE)) {
+                        advance() // consume '{'
+                        val lambda = lambdaExpression(consumedLeftBrace = true)
+                        expr = Expr.MethodCallExpr(expr, name, listOf(lambda))
+                    } else {
+                        expr = Expr.PropertyAccess(expr, name)
+                    }
+                }
+                else -> break
             }
         }
 
@@ -230,6 +234,13 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun finishCall(callee: Expr): Expr {
+        val arguments = parseArgumentList()
+        val trailing = tryParseLambda()
+        trailing?.let { arguments.add(it) }
+        return Expr.CallExpr(callee, arguments)
+    }
+
+    private fun parseArgumentList(): MutableList<Expr> {
         val arguments = mutableListOf<Expr>()
         if (!check(TokenType.RPAREN)) {
             do {
@@ -239,9 +250,17 @@ class Parser(private val tokens: List<Token>) {
                 arguments.add(expression())
             } while (match(TokenType.COMMA))
         }
+        consume(TokenType.RPAREN, "Expect ')' after arguments")
+        return arguments
+    }
 
-        val paren = consume(TokenType.RPAREN, "Expect ')' after arguments")
-        return Expr.Call(callee, arguments)
+    private fun tryParseLambda(): Expr.LambdaExpr? {
+        return if (check(TokenType.LBRACE)) {
+            advance()
+            lambdaExpression(consumedLeftBrace = true)
+        } else {
+            null
+        }
     }
 
     private fun primary(): Expr {
@@ -251,6 +270,7 @@ class Parser(private val tokens: List<Token>) {
             match(TokenType.IDENTIFIER) -> Expr.Variable(previous().lexeme)
             match(TokenType.LBRACKET) -> matrixLiteral()
             match(TokenType.FUNCTION) -> functionExpression()
+            match(TokenType.LBRACE) -> lambdaExpression(consumedLeftBrace = true)
             match(TokenType.LPAREN) -> {
                 val expr = expression()
                 consume(TokenType.RPAREN, "Expect ')' after expression")
@@ -280,6 +300,35 @@ class Parser(private val tokens: List<Token>) {
 
         // Передаем пустое имя для анонимной функции
         return Expr.Function("", parameters, body)
+    }
+
+    private fun lambdaExpression(consumedLeftBrace: Boolean = false): Expr.LambdaExpr {
+        if (!consumedLeftBrace) {
+            consume(TokenType.LBRACE, "Expect '{' to start lambda")
+        }
+
+        val startPosition = current
+        val parameters = mutableListOf<String>()
+        var arrowFound = false
+
+        if (!check(TokenType.RBRACE)) {
+            while (check(TokenType.IDENTIFIER)) {
+                parameters.add(advance().lexeme)
+                if (!match(TokenType.COMMA)) break
+            }
+            if (match(TokenType.ARROW)) {
+                arrowFound = true
+            } else {
+                // Откатываемся, если стрелка не найдена — значит тело начинается сразу
+                current = startPosition
+                parameters.clear()
+            }
+        }
+
+        val resolvedParams = if (arrowFound) parameters else listOf("it")
+        val body = expression()
+        consume(TokenType.RBRACE, "Expect '}' after lambda body")
+        return Expr.LambdaExpr(resolvedParams, body)
     }
 
     private fun matrixLiteral(): Expr {
