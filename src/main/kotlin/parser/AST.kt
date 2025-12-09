@@ -56,6 +56,9 @@ sealed class Expr {
     data class Function(val name: String, val params: List<String>, val body: Stmt) : Expr()
     data class Get(val obj: Expr, val name: String) : Expr()
 
+    // Выражение-условие (if ... else ...) как результат
+    data class Conditional(val condition: Expr, val thenBranch: Expr, val elseBranch: Expr) : Expr()
+
     // Функциональные выражения
     data class Lambda(val params: List<String>, val body: Expr) : Expr()
     data class Compose(val outer: Expr, val inner: Expr) : Expr()

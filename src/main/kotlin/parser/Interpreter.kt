@@ -227,6 +227,10 @@ class Interpreter {
                 environment.assign(expr.name, value)
                 value
             }
+            is Expr.Conditional -> {
+                val condition = evaluate(expr.condition)
+                if (isTruthy(condition)) evaluate(expr.thenBranch) else evaluate(expr.elseBranch)
+            }
             is Expr.Binary -> {
                 val left = evaluate(expr.left)
                 val right = evaluate(expr.right)

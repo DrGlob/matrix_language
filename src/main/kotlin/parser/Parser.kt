@@ -118,7 +118,23 @@ class Parser(private val tokens: List<Token>) {
         return Stmt.Expression(expr)
     }
 
-    private fun expression(): Expr = assignment()
+    private fun expression(): Expr = conditional()
+
+    private fun conditional(): Expr {
+        if (match(TokenType.IF)) {
+            consume(TokenType.LPAREN, "Expect '(' after 'if'")
+            val condition = expression()
+            consume(TokenType.RPAREN, "Expect ')' after condition")
+
+            val thenBranch = expression()
+            consume(TokenType.ELSE, "Expect 'else' after if branch")
+            val elseBranch = expression()
+
+            return Expr.Conditional(condition, thenBranch, elseBranch)
+        }
+
+        return assignment()
+    }
 
     private fun assignment(): Expr {
         val expr = equality()
