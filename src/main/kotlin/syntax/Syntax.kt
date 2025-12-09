@@ -21,21 +21,14 @@ package syntax
  *        let result = A * B
  *    }
  *
- * 4. Циклы:
- *    for i in 0..5 {
- *        let mat = identity(i)
- *        print(mat)
- *    }
- *
- * 5. Функции:
- *    function addMatrices(a, b) {
- *        return a + b
- *    }
+ * 4. Выражения:
+ *    let x = if rows(A) > 1 then A + B else A * B
+ *    let y = let t = 10 in t * 2
  */
 object Syntax {
     // Ключевые слова
     val KEYWORDS = setOf(
-        "let", "if", "else", "for", "in", "function",
+        "let", "if", "then", "else", "in", "function",
         "return", "print", "zeros", "ones", "identity",
         "transpose", "rows", "cols"
     )
