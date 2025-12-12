@@ -14,16 +14,16 @@ data class BoolValue(val value: Boolean) : Value
 // Функции/лямбды
 interface CallableValue : Value {
     fun arity(): Int
-    fun call(interpreter: Interpreter, arguments: List<Value>): Value
+    fun call(evaluator: Evaluator, arguments: List<Value>): Value
 }
 
 data class NativeFunctionValue(
     private val expectedArity: Int,
-    private val impl: (List<Value>) -> Value
+    private val impl: (Evaluator, List<Value>) -> Value
 ) : CallableValue {
     override fun arity(): Int = expectedArity
-    override fun call(interpreter: Interpreter, arguments: List<Value>): Value =
-        impl(arguments)
+    override fun call(evaluator: Evaluator, arguments: List<Value>): Value =
+        impl(evaluator, arguments)
     override fun toString(): String = "<native fn>"
 }
 
@@ -34,19 +34,12 @@ data class FunctionValue(
 ) : CallableValue {
     override fun arity(): Int = params.size
 
-    override fun call(interpreter: Interpreter, arguments: List<Value>): Value {
+    override fun call(evaluator: Evaluator, arguments: List<Value>): Value {
         val environment = Environment(closure)
         for ((i, param) in params.withIndex()) {
             environment.define(param, arguments.getOrElse(i) { UnitValue })
         }
-
-        val previousEnv = interpreter.environment
-        try {
-            interpreter.environment = environment
-            return interpreter.evaluate(body)
-        } finally {
-            interpreter.environment = previousEnv
-        }
+        return evaluator.eval(body, environment)
     }
 
     override fun toString(): String = "<lambda(${params.joinToString(", ")})>"
@@ -60,22 +53,18 @@ data class UserFunctionValue(
 ) : CallableValue {
     override fun arity(): Int = params.size
 
-    override fun call(interpreter: Interpreter, arguments: List<Value>): Value {
+    override fun call(evaluator: Evaluator, arguments: List<Value>): Value {
         val environment = Environment(closure)
         for ((i, param) in params.withIndex()) {
             environment.define(param, arguments.getOrElse(i) { UnitValue })
         }
 
-        val previousEnv = interpreter.environment
-        try {
-            interpreter.environment = environment
-            interpreter.execute(body)
+        return try {
+            evaluator.interpreter.executeBlock(listOf(body), environment)
+            UnitValue
         } catch (returnValue: ReturnException) {
-            return returnValue.value
-        } finally {
-            interpreter.environment = previousEnv
+            returnValue.value
         }
-        return UnitValue
     }
 
     override fun toString(): String = "<function>"
