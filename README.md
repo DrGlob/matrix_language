@@ -9,6 +9,7 @@
 - Лямбды и коллекции: `array.map { x -> x * 2 }`, `array.reduce(0) { acc, x -> acc + x }`
 - Можно опустить параметры лямбды с одним аргументом: `array.map { transform(it) }`
 - zip/unzip: `let pairs = zip(a, b)` и `let parts = pairs.unzip()` (доступ к `parts.first`/`parts.second`)
+- Значения типизированы через `Value`: числа, матрицы, списки, пары, функции/лямбды и `unit`
 - `for` убран из синтаксиса (ключевое слово зарезервировано)
 
 ### Docker

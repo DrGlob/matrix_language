@@ -6,137 +6,67 @@ import kotlin.math.sqrt
 
 // Исключения
 class RuntimeError(val token: Token, message: String) : RuntimeException(message)
-class ReturnException(val value: Any?) : Exception("Return statement")
+class ReturnException(val value: Value) : RuntimeException("Return statement")
 
 class Interpreter {
-    private val globals = Environment()
-    private var environment = globals
+    internal val globals = Environment()
+    internal var environment: Environment = globals
 
-    // Специальный объект для пустого возврата
-    companion object {
-        val UNIT = object : Any() {
-            override fun toString(): String = "unit"
+    init {
+        defineNative("map", 2) { args ->
+            val fn = expectCallable("map", args[1])
+            applyMap(args[0], fn)
+        }
+        defineNative("reduce", 3) { args ->
+            val fn = expectCallable("reduce", args[2])
+            applyReduce(args[0], args[1], fn)
+        }
+        defineNative("zip", 2) { args -> applyZip(args[0], args[1]) }
+        defineNative("unzip", 1) { args -> applyUnzip(args[0]) }
+        defineNative("filter", 2) { args ->
+            val predicate = expectCallable("filter", args[1])
+            applyFilter(args[0], predicate)
+        }
+        defineNative("compose", 2) { args ->
+            val f = expectCallable("compose", args[0])
+            val g = expectCallable("compose", args[1])
+            NativeFunctionValue(g.arity()) { callArgs ->
+                val intermediate = g.call(this, callArgs)
+                f.call(this, listOf(intermediate))
+            }
+        }
+        defineNative("zeros", 2) { args ->
+            val rows = expectNumber("zeros", args[0]).toInt()
+            val cols = expectNumber("zeros", args[1]).toInt()
+            MatrixValue(MatrixFactory.zeros(rows, cols))
+        }
+        defineNative("ones", 2) { args ->
+            val rows = expectNumber("ones", args[0]).toInt()
+            val cols = expectNumber("ones", args[1]).toInt()
+            MatrixValue(MatrixFactory.ones(rows, cols))
+        }
+        defineNative("identity", 1) { args ->
+            val size = expectNumber("identity", args[0]).toInt()
+            MatrixValue(MatrixFactory.identity(size))
+        }
+        defineNative("transpose", 1) { args ->
+            MatrixValue(expectMatrix("transpose", args[0]).transpose())
+        }
+        defineNative("rows", 1) { args ->
+            NumberValue(expectMatrix("rows", args[0]).numRows.toDouble())
+        }
+        defineNative("cols", 1) { args ->
+            NumberValue(expectMatrix("cols", args[0]).numCols.toDouble())
+        }
+        defineNative("norm", 1) { args ->
+            val matrix = expectMatrix("norm", args[0])
+            val sum = matrix.rows.flatten().sumOf { it * it }
+            NumberValue(sqrt(sum))
         }
     }
 
-    init {
-        // Встроенные функции - возвращают не-null значения
-        globals.define("map", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val function = interpreter.expectCallable("map", arguments[1])
-                return interpreter.applyMap(arguments[0], function)
-            }
-        })
-
-        globals.define("reduce", object : MatrixCallable {
-            override fun arity(): Int = 3
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val function = interpreter.expectCallable("reduce", arguments[2])
-                return interpreter.applyReduce(arguments[0], arguments[1], function)
-            }
-        })
-
-        globals.define("zip", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                return interpreter.applyZip(arguments[0], arguments[1])
-            }
-        })
-
-        globals.define("unzip", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                return interpreter.applyUnzip(arguments[0])
-            }
-        })
-
-        globals.define("filter", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val predicate = interpreter.expectCallable("filter", arguments[1])
-                return interpreter.applyFilter(arguments[0], predicate)
-            }
-        })
-
-        globals.define("compose", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val f = arguments[0] as MatrixCallable
-                val g = arguments[1] as MatrixCallable
-
-                return object : MatrixCallable {
-                    override fun arity(): Int = 1
-                    override fun call(interpreter: Interpreter, args: List<Any?>): Any? {
-                        val intermediate = g.call(interpreter, args)
-                        return f.call(interpreter, listOf(intermediate))
-                    }
-                }
-            }
-        })
-
-        globals.define("zeros", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val rows = (arguments[0] as Double).toInt()
-                val cols = (arguments[1] as Double).toInt()
-                return MatrixFactory.zeros(rows, cols)
-            }
-            override fun toString(): String = "<native function zeros>"
-        })
-
-        globals.define("ones", object : MatrixCallable {
-            override fun arity(): Int = 2
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val rows = (arguments[0] as Double).toInt()
-                val cols = (arguments[1] as Double).toInt()
-                return MatrixFactory.ones(rows, cols)
-            }
-            override fun toString(): String = "<native function ones>"
-        })
-
-        globals.define("identity", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val size = (arguments[0] as Double).toInt()
-                return MatrixFactory.identity(size)
-            }
-            override fun toString(): String = "<native function identity>"
-        })
-
-        globals.define("transpose", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                return (arguments[0] as Matrix).transpose()
-            }
-            override fun toString(): String = "<native function transpose>"
-        })
-
-        globals.define("rows", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                return (arguments[0] as Matrix).numRows.toDouble()
-            }
-            override fun toString(): String = "<native function rows>"
-        })
-
-        globals.define("cols", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                return (arguments[0] as Matrix).numCols.toDouble()
-            }
-            override fun toString(): String = "<native function cols>"
-        })
-
-        globals.define("norm", object : MatrixCallable {
-            override fun arity(): Int = 1
-            override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                val matrix = arguments[0] as Matrix
-                val sum = matrix.rows.flatten().sumOf { it * it }
-                return sqrt(sum)
-            }
-            override fun toString(): String = "<native function norm>"
-        })
+    private fun defineNative(name: String, arity: Int, impl: (List<Value>) -> Value) {
+        globals.define(name, NativeFunctionValue(arity, impl))
     }
 
     fun interpret(statements: List<Stmt>) {
@@ -153,7 +83,7 @@ class Interpreter {
         }
     }
 
-    private fun execute(stmt: Stmt) {
+    fun execute(stmt: Stmt) {
         when (stmt) {
             is Stmt.Expression -> evaluate(stmt.expression)
             is Stmt.Print -> {
@@ -161,12 +91,10 @@ class Interpreter {
                 println(stringify(value))
             }
             is Stmt.Var -> {
-                val value = stmt.initializer?.let { evaluate(it) }
+                val value = stmt.initializer?.let { evaluate(it) } ?: UnitValue
                 environment.define(stmt.name, value)
             }
-            is Stmt.Block -> {
-                executeBlock(stmt.statements, Environment(environment))
-            }
+            is Stmt.Block -> executeBlock(stmt.statements, Environment(environment))
             is Stmt.If -> {
                 val condition = evaluate(stmt.condition)
                 if (isTruthy(condition)) {
@@ -176,11 +104,11 @@ class Interpreter {
                 }
             }
             is Stmt.Function -> {
-                val function = MatrixFunction(stmt, environment)
-                environment.define(stmt.name, function)
+                val fn = UserFunctionValue(stmt, stmt.params, stmt.body, environment)
+                environment.define(stmt.name, fn)
             }
             is Stmt.Return -> {
-                val value = stmt.value?.let { evaluate(it) }
+                val value = stmt.value?.let { evaluate(it) } ?: UnitValue
                 throw ReturnException(value)
             }
         }
@@ -198,11 +126,11 @@ class Interpreter {
         }
     }
 
-    private fun evaluate(expr: Expr): Any? {
+    fun evaluate(expr: Expr): Value {
         return when (expr) {
-            is Expr.MatrixLiteral -> Matrix(expr.rows)
-            is Expr.NumberLiteral -> expr.value
-            is Expr.StringLiteral -> expr.value
+            is Expr.MatrixLiteral -> MatrixValue(Matrix(expr.rows))
+            is Expr.NumberLiteral -> NumberValue(expr.value)
+            is Expr.StringLiteral -> StringValue(expr.value)
             is Expr.Variable -> environment.get(expr.name)
             is Expr.Assign -> {
                 val value = evaluate(expr.value)
@@ -215,8 +143,8 @@ class Interpreter {
             }
             is Expr.LetInExpr -> {
                 val bound = evaluate(expr.boundExpr)
-                val previous = environment
                 val scoped = Environment(environment)
+                val previous = environment
                 try {
                     scoped.define(expr.name, bound)
                     environment = scoped
@@ -225,132 +153,95 @@ class Interpreter {
                     environment = previous
                 }
             }
-            is Expr.Binary -> {
-                val left = evaluate(expr.left)
-                val right = evaluate(expr.right)
-
-                when (expr.operator.type) {
-                    TokenType.PLUS -> when {
-                        left is Matrix && right is Matrix -> left + right
-                        left is Double && right is Double -> left + right
-                        left is Double && right is Matrix -> right * left
-                        left is Matrix && right is Double -> left * right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
-                    }
-                    TokenType.MINUS -> when {
-                        left is Matrix && right is Matrix -> left - right
-                        left is Double && right is Double -> left - right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
-                    }
-                    TokenType.MULTIPLY -> when {
-                        left is Matrix && right is Matrix -> left * right
-                        left is Double && right is Matrix -> right * left
-                        left is Matrix && right is Double -> left * right
-                        left is Double && right is Double -> left * right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
-                    }
-                    TokenType.DIVIDE -> when {
-                        left is Double && right is Double -> left / right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers")
-                    }
-                    TokenType.EQ -> isEqual(left, right)
-                    TokenType.NEQ -> !isEqual(left, right)
-                    TokenType.LT -> when {
-                        left is Double && right is Double -> left < right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers")
-                    }
-                    TokenType.GT -> when {
-                        left is Double && right is Double -> left > right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers")
-                    }
-                    TokenType.LTE -> when {
-                        left is Double && right is Double -> left <= right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers")
-                    }
-                    TokenType.GTE -> when {
-                        left is Double && right is Double -> left >= right
-                        else -> throw RuntimeError(expr.operator, "Operands must be numbers")
-                    }
-                    else -> throw RuntimeError(expr.operator, "Unknown operator")
-                }
-            }
+            is Expr.Binary -> evalBinary(expr)
             is Expr.Unary -> {
                 val right = evaluate(expr.right)
                 when (expr.operator.type) {
-                    TokenType.MINUS -> {
-                        checkNumberOperand(expr.operator, right)
-                        -(right as Double)
-                    }
+                    TokenType.MINUS -> NumberValue(-expectNumber(expr.operator.lexeme, right))
                     else -> throw RuntimeError(expr.operator, "Unknown operator")
                 }
             }
             is Expr.CallExpr -> evaluateCall(expr)
             is Expr.MethodCallExpr -> evaluateMethodCall(expr)
             is Expr.PropertyAccess -> evaluatePropertyAccess(expr)
-            is Expr.Function -> MatrixFunction(expr, environment)
-            is Expr.LambdaExpr -> {
-                object : MatrixCallable {
-                    override fun arity(): Int = expr.params.size
-                    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-                        val environment = Environment(this@Interpreter.environment)
-
-                        for ((i, param) in expr.params.withIndex()) {
-                            environment.define(param, arguments[i])
-                        }
-
-                        val previousEnv = this@Interpreter.environment
-                        try {
-                            this@Interpreter.environment = environment
-                            return evaluate(expr.body) ?: UNIT
-                        } finally {
-                            this@Interpreter.environment = previousEnv
-                        }
-                    }
-
-                    override fun toString(): String =
-                        "<lambda(${expr.params.joinToString(", ")})>"
+            is Expr.Function -> {
+                val body = when (val stmtBody = expr.body) {
+                    is Stmt.Block -> stmtBody
+                    else -> Stmt.Block(listOf(stmtBody))
                 }
+                UserFunctionValue(expr, expr.params, body, environment)
             }
+            is Expr.LambdaExpr -> FunctionValue(expr.params, expr.body, environment)
         }
     }
 
-    private fun evaluateCall(expr: Expr.CallExpr): Any? {
+    private fun evalBinary(expr: Expr.Binary): Value {
+        val left = evaluate(expr.left)
+        val right = evaluate(expr.right)
+
+        return when (expr.operator.type) {
+            TokenType.PLUS -> when {
+                left is MatrixValue && right is MatrixValue -> MatrixValue(left.matrix + right.matrix)
+                left is NumberValue && right is NumberValue -> NumberValue(left.value + right.value)
+                left is NumberValue && right is MatrixValue -> MatrixValue(right.matrix * left.value)
+                left is MatrixValue && right is NumberValue -> MatrixValue(left.matrix * right.value)
+                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+            }
+            TokenType.MINUS -> when {
+                left is MatrixValue && right is MatrixValue -> MatrixValue(left.matrix - right.matrix)
+                left is NumberValue && right is NumberValue -> NumberValue(left.value - right.value)
+                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+            }
+            TokenType.MULTIPLY -> when {
+                left is MatrixValue && right is MatrixValue -> MatrixValue(left.matrix * right.matrix)
+                left is NumberValue && right is MatrixValue -> MatrixValue(right.matrix * left.value)
+                left is MatrixValue && right is NumberValue -> MatrixValue(left.matrix * right.value)
+                left is NumberValue && right is NumberValue -> NumberValue(left.value * right.value)
+                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+            }
+            TokenType.DIVIDE -> {
+                val l = expectNumber(expr.operator.lexeme, left)
+                val r = expectNumber(expr.operator.lexeme, right)
+                NumberValue(l / r)
+            }
+            TokenType.EQ -> BoolValue(isEqual(left, right))
+            TokenType.NEQ -> BoolValue(!isEqual(left, right))
+            TokenType.LT -> BoolValue(expectNumber(expr.operator.lexeme, left) < expectNumber(expr.operator.lexeme, right))
+            TokenType.GT -> BoolValue(expectNumber(expr.operator.lexeme, left) > expectNumber(expr.operator.lexeme, right))
+            TokenType.LTE -> BoolValue(expectNumber(expr.operator.lexeme, left) <= expectNumber(expr.operator.lexeme, right))
+            TokenType.GTE -> BoolValue(expectNumber(expr.operator.lexeme, left) >= expectNumber(expr.operator.lexeme, right))
+            else -> throw RuntimeError(expr.operator, "Unknown operator")
+        }
+    }
+
+    private fun evaluateCall(expr: Expr.CallExpr): Value {
         val callee = evaluate(expr.callee)
         val arguments = expr.args.map { evaluate(it) }
 
-        if (callee is MatrixCallable) {
-            if (arguments.size != callee.arity()) {
-                val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
-                throw RuntimeError(dummyToken,
-                    "Expected ${callee.arity()} arguments but got ${arguments.size}")
-            }
-            return callee.call(this, arguments)
+        val callable = expectCallable("call", callee)
+        if (arguments.size != callable.arity()) {
+            val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
+            throw RuntimeError(dummyToken, "Expected ${callable.arity()} arguments but got ${arguments.size}")
         }
-
-        val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
-        throw RuntimeError(dummyToken, "Can only call functions")
+        return callable.call(this, arguments)
     }
 
-    private fun evaluateMethodCall(expr: Expr.MethodCallExpr): Any? {
+    private fun evaluateMethodCall(expr: Expr.MethodCallExpr): Value {
         val receiver = evaluate(expr.receiver)
         val args = expr.args.map { evaluate(it) }
 
         return when (expr.method) {
             "map" -> {
-                if (args.isEmpty()) {
-                    throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects a lambda")
-                }
-                val fn = expectCallable("map", args.getOrNull(0))
+                val fn = expectCallable("map", args.firstOrNull()
+                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
+                        "Method '${expr.method}' expects a lambda"))
                 applyMap(receiver, fn)
             }
             "reduce" -> {
-                if (args.size < 2) {
-                    throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects initial value and lambda")
-                }
-                val initial = args.getOrNull(0)
-                val fn = expectCallable("reduce", args.getOrNull(1))
+                val initial = args.getOrNull(0) ?: UnitValue
+                val fn = expectCallable("reduce", args.getOrNull(1)
+                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
+                        "Method '${expr.method}' expects initial value and lambda"))
                 applyReduce(receiver, initial, fn)
             }
             "zip" -> {
@@ -367,38 +258,32 @@ class Interpreter {
         }
     }
 
-    private fun evaluatePropertyAccess(expr: Expr.PropertyAccess): Any? {
+    private fun evaluatePropertyAccess(expr: Expr.PropertyAccess): Value {
         val obj = evaluate(expr.receiver)
         return when (obj) {
-            is Matrix -> {
-                when (expr.name) {
-                    "rows" -> obj.numRows.toDouble()
-                    "cols" -> obj.numCols.toDouble()
-                    "transpose" -> obj.transpose()
-                    else -> throw RuntimeError(
-                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                        "Undefined property '${expr.name}' on matrix"
-                    )
-                }
+            is MatrixValue -> when (expr.name) {
+                "rows" -> NumberValue(obj.matrix.numRows.toDouble())
+                "cols" -> NumberValue(obj.matrix.numCols.toDouble())
+                "transpose" -> MatrixValue(obj.matrix.transpose())
+                else -> throw RuntimeError(
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                    "Undefined property '${expr.name}' on matrix"
+                )
             }
-            is Pair<*, *> -> {
-                when (expr.name) {
-                    "first" -> obj.first
-                    "second" -> obj.second
-                    else -> throw RuntimeError(
-                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                        "Undefined property '${expr.name}' on pair"
-                    )
-                }
+            is PairValue -> when (expr.name) {
+                "first" -> obj.first
+                "second" -> obj.second
+                else -> throw RuntimeError(
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                    "Undefined property '${expr.name}' on pair"
+                )
             }
-            is List<*> -> {
-                when (expr.name) {
-                    "size" -> obj.size.toDouble()
-                    else -> throw RuntimeError(
-                        Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                        "Undefined property '${expr.name}' on list"
-                    )
-                }
+            is ListValue -> when (expr.name) {
+                "size" -> NumberValue(obj.items.size.toDouble())
+                else -> throw RuntimeError(
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                    "Undefined property '${expr.name}' on list"
+                )
             }
             else -> {
                 val dummyToken = Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
@@ -407,37 +292,46 @@ class Interpreter {
         }
     }
 
-    private fun expectCallable(name: String, value: Any?): MatrixCallable {
-        return value as? MatrixCallable ?: throw RuntimeError(
+    private fun expectCallable(name: String, value: Value): CallableValue {
+        return value as? CallableValue ?: throw RuntimeError(
             Token(TokenType.IDENTIFIER, name, null, 0, 0),
             "Expected lambda/function as argument for '$name'"
         )
     }
 
-    private fun checkArity(expected: Int, callable: MatrixCallable, name: String) {
-        if (callable.arity() != expected) {
-            throw RuntimeError(
-                Token(TokenType.IDENTIFIER, name, null, 0, 0),
-                "Expected function with $expected parameter(s) for '$name'"
-            )
-        }
+    private fun expectNumber(name: String, value: Value): Double {
+        return (value as? NumberValue)?.value ?: throw RuntimeError(
+            Token(TokenType.IDENTIFIER, name, null, 0, 0),
+            "Expected number value"
+        )
     }
 
-    private fun applyMap(target: Any?, function: MatrixCallable): Any {
-        checkArity(1, function, "map")
+    private fun expectMatrix(name: String, value: Value): Matrix {
+        return (value as? MatrixValue)?.matrix ?: throw RuntimeError(
+            Token(TokenType.IDENTIFIER, name, null, 0, 0),
+            "Expected matrix value"
+        )
+    }
+
+    private fun applyMap(target: Value, function: CallableValue): Value {
+        if (function.arity() != 1) {
+            throw RuntimeError(Token(TokenType.IDENTIFIER, "map", null, 0, 0),
+                "Expected function with 1 parameter for 'map'")
+        }
         return when (target) {
-            is Matrix -> {
-                Matrix(target.rows.map { row ->
+            is MatrixValue -> {
+                val mapped = target.matrix.rows.map { row ->
                     row.map { value ->
-                        val result = function.call(this, listOf(value))
-                        (result as? Double) ?: throw RuntimeError(
+                        val result = function.call(this, listOf(NumberValue(value)))
+                        (result as? NumberValue)?.value ?: throw RuntimeError(
                             Token(TokenType.IDENTIFIER, "map", null, 0, 0),
                             "Matrix map expects lambda to return number"
                         )
                     }
-                })
+                }
+                MatrixValue(Matrix(mapped))
             }
-            is List<*> -> target.map { function.call(this, listOf(it)) }
+            is ListValue -> ListValue(target.items.map { function.call(this, listOf(it)) })
             else -> throw RuntimeError(
                 Token(TokenType.IDENTIFIER, "map", null, 0, 0),
                 "Can only map over matrices or lists"
@@ -445,8 +339,11 @@ class Interpreter {
         }
     }
 
-    private fun applyReduce(target: Any?, initial: Any?, function: MatrixCallable): Any? {
-        checkArity(2, function, "reduce")
+    private fun applyReduce(target: Value, initial: Value, function: CallableValue): Value {
+        if (function.arity() != 2) {
+            throw RuntimeError(Token(TokenType.IDENTIFIER, "reduce", null, 0, 0),
+                "Expected function with 2 parameters for 'reduce'")
+        }
         val items = flattenCollection(target, "reduce")
         var accumulator = initial
         for (value in items) {
@@ -455,14 +352,19 @@ class Interpreter {
         return accumulator
     }
 
-    private fun applyFilter(target: Any?, predicate: MatrixCallable): Any {
-        checkArity(1, predicate, "filter")
+    private fun applyFilter(target: Value, predicate: CallableValue): Value {
+        if (predicate.arity() != 1) {
+            throw RuntimeError(Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
+                "Expected function with 1 parameter for 'filter'")
+        }
         return when (target) {
-            is Matrix -> {
-                val filteredRows = target.rows.map { row ->
-                    row.filter { value -> isTruthy(predicate.call(this, listOf(value))) }
+            is MatrixValue -> {
+                val filteredRows = target.matrix.rows.map { row ->
+                    row.filter { value ->
+                        isTruthy(predicate.call(this, listOf(NumberValue(value))))
+                    }
                 }.filter { it.isNotEmpty() }
-                if (filteredRows.isEmpty()) return Matrix(emptyList())
+                if (filteredRows.isEmpty()) return MatrixValue(Matrix(emptyList()))
                 val width = filteredRows.first().size
                 if (!filteredRows.all { it.size == width }) {
                     throw RuntimeError(
@@ -470,9 +372,9 @@ class Interpreter {
                         "Filter over matrix must keep consistent row sizes"
                     )
                 }
-                Matrix(filteredRows)
+                MatrixValue(Matrix(filteredRows))
             }
-            is List<*> -> target.filter { isTruthy(predicate.call(this, listOf(it))) }
+            is ListValue -> ListValue(target.items.filter { isTruthy(predicate.call(this, listOf(it))) })
             else -> throw RuntimeError(
                 Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
                 "Can only filter matrices or lists"
@@ -480,26 +382,27 @@ class Interpreter {
         }
     }
 
-    private fun applyZip(left: Any?, right: Any?): List<Pair<Any?, Any?>> {
+    private fun applyZip(left: Value, right: Value): Value {
         val leftItems = flattenCollection(left, "zip")
         val rightItems = flattenCollection(right, "zip")
         val size = minOf(leftItems.size, rightItems.size)
-        return (0 until size).map { i -> Pair(leftItems[i], rightItems[i]) }
+        val pairs = (0 until size).map { i -> PairValue(leftItems[i], rightItems[i]) }
+        return ListValue(pairs)
     }
 
-    private fun applyUnzip(value: Any?): Pair<List<Any?>, List<Any?>> {
+    private fun applyUnzip(value: Value): Value {
         val pairs = when (value) {
-            is List<*> -> value
+            is ListValue -> value.items
             else -> throw RuntimeError(
                 Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
                 "unzip expects a list of pairs"
             )
         }
 
-        val first = mutableListOf<Any?>()
-        val second = mutableListOf<Any?>()
+        val first = mutableListOf<Value>()
+        val second = mutableListOf<Value>()
         for (pair in pairs) {
-            if (pair !is Pair<*, *>) {
+            if (pair !is PairValue) {
                 throw RuntimeError(
                     Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
                     "unzip expects a list of pairs"
@@ -508,13 +411,13 @@ class Interpreter {
             first.add(pair.first)
             second.add(pair.second)
         }
-        return Pair(first, second)
+        return PairValue(ListValue(first), ListValue(second))
     }
 
-    private fun flattenCollection(target: Any?, opName: String): List<Any?> {
+    private fun flattenCollection(target: Value, opName: String): List<Value> {
         return when (target) {
-            is Matrix -> target.rows.flatten()
-            is List<*> -> target.toList()
+            is MatrixValue -> target.matrix.rows.flatten().map { NumberValue(it) }
+            is ListValue -> target.items
             else -> throw RuntimeError(
                 Token(TokenType.IDENTIFIER, opName, null, 0, 0),
                 "$opName expects a matrix or a list"
@@ -522,121 +425,72 @@ class Interpreter {
         }
     }
 
-    private fun isTruthy(obj: Any?): Boolean {
-        return when (obj) {
-            null -> false
-            is Boolean -> obj
-            UNIT -> false
+    private fun isTruthy(value: Value): Boolean {
+        return when (value) {
+            is BoolValue -> value.value
+            UnitValue -> false
             else -> true
         }
     }
 
-    private fun isEqual(a: Any?, b: Any?): Boolean {
-        return a == b
+    private fun isEqual(a: Value, b: Value): Boolean {
+        return when {
+            a is NumberValue && b is NumberValue -> a.value == b.value
+            a is MatrixValue && b is MatrixValue -> a.matrix == b.matrix
+            a is StringValue && b is StringValue -> a.value == b.value
+            a is BoolValue && b is BoolValue -> a.value == b.value
+            a is ListValue && b is ListValue -> a.items == b.items
+            a is PairValue && b is PairValue -> isEqual(a.first, b.first) && isEqual(a.second, b.second)
+            else -> false
+        }
     }
 
-    private fun checkNumberOperand(operator: Token, operand: Any?) {
-        if (operand is Double) return
-        throw RuntimeError(operator, "Operand must be a number")
-    }
-
-    private fun stringify(obj: Any?): String {
-        return when (obj) {
-            null -> "nil"
-            UNIT -> "unit"
-            is Double -> {
-                val text = obj.toString()
-                if (text.endsWith(".0")) {
-                    text.substring(0, text.length - 2)
-                } else {
-                    "%.4f".format(obj)
-                }
+    private fun stringify(value: Value): String {
+        return when (value) {
+            UnitValue -> "unit"
+            is NumberValue -> {
+                val text = value.value.toString()
+                if (text.endsWith(".0")) text.dropLast(2) else "%.4f".format(value.value)
             }
-            is Pair<*, *> -> "(${stringify(obj.first)}, ${stringify(obj.second)})"
-            is List<*> -> obj.joinToString(prefix = "[", postfix = "]") { stringify(it) }
-            is Matrix -> {
-                if (obj.numRows <= 5 && obj.numCols <= 5) {
-                    obj.rows.joinToString("\n") { row ->
+            is StringValue -> value.value
+            is BoolValue -> value.value.toString()
+            is PairValue -> "(${stringify(value.first)}, ${stringify(value.second)})"
+            is ListValue -> value.items.joinToString(prefix = "[", postfix = "]") { stringify(it) }
+            is MatrixValue -> {
+                val matrix = value.matrix
+                if (matrix.numRows <= 5 && matrix.numCols <= 5) {
+                    matrix.rows.joinToString("\n") { row ->
                         "[${row.joinToString(", ") { "%.2f".format(it) }}]"
                     }
                 } else {
-                    "Matrix(${obj.numRows}x${obj.numCols})"
+                    "Matrix(${matrix.numRows}x${matrix.numCols})"
                 }
             }
-            else -> obj.toString()
+            is CallableValue -> value.toString()
         }
     }
-}
-
-interface MatrixCallable {
-    fun arity(): Int
-    fun call(interpreter: Interpreter, arguments: List<Any?>): Any?
-}
-
-class MatrixFunction(
-    private val declaration: Any,
-    private val closure: Environment
-) : MatrixCallable {
-    override fun arity(): Int {
-        return when (declaration) {
-            is Stmt.Function -> declaration.params.size
-            is Expr.Function -> declaration.params.size
-            else -> 0
-        }
-    }
-
-    override fun call(interpreter: Interpreter, arguments: List<Any?>): Any? {
-        val environment = Environment(closure)
-
-        val params = when (declaration) {
-            is Stmt.Function -> declaration.params
-            is Expr.Function -> declaration.params
-            else -> emptyList()
-        }
-
-        for ((i, param) in params.withIndex()) {
-            environment.define(param, arguments[i])
-        }
-
-        try {
-            when (declaration) {
-                is Stmt.Function -> interpreter.executeBlock(
-                    listOf(declaration.body), environment
-                )
-                is Expr.Function -> interpreter.executeBlock(
-                    listOf(declaration.body), environment
-                )
-            }
-        } catch (returnValue: ReturnException) {
-            return returnValue.value ?: Interpreter.UNIT
-        }
-
-        return Interpreter.UNIT
-    }
-
-    override fun toString(): String = "<function>"
 }
 
 class Environment(private val enclosing: Environment? = null) {
-    private val values = mutableMapOf<String, Any?>()
+    private val values = mutableMapOf<String, Value>()
 
-    fun define(name: String, value: Any?) {
+    fun define(name: String, value: Value) {
         values[name] = value
     }
 
-    fun get(name: String): Any? {
+    fun get(name: String): Value {
         return when {
-            values.containsKey(name) -> values[name]
+            values.containsKey(name) -> values[name]!!
             enclosing != null -> enclosing.get(name)
-            else -> throw RuntimeException("Undefined variable '$name'")
+            else -> throw RuntimeError(Token(TokenType.IDENTIFIER, name, null, 0, 0), "Undefined variable '$name'")
         }
     }
 
-    fun assign(name: String, value: Any?) {
+    fun assign(name: String, value: Value) {
         when {
             values.containsKey(name) -> values[name] = value
             enclosing != null -> enclosing.assign(name, value)
-            else -> throw RuntimeException("Undefined variable '$name'")
+            else -> throw RuntimeError(Token(TokenType.IDENTIFIER, name, null, 0, 0), "Undefined variable '$name'")
         }
     }
 }
