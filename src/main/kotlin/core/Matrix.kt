@@ -1,6 +1,12 @@
 package org.example.core
 
 import org.example.utils.MatrixValidator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlin.math.max
 
 interface MatrixOperations {
     operator fun plus(other: Matrix): Matrix
@@ -21,6 +27,8 @@ class Matrix private constructor(
     val numCols: Int get() = cols
 
     companion object {
+        private val DEFAULT_PARALLELISM = max(1, Runtime.getRuntime().availableProcessors())
+
         operator fun invoke(rows: List<List<Double>>): Matrix =
             fromFlat(rows.size, if (rows.isNotEmpty()) rows[0].size else 0, flatten(rows), copy = false)
 
@@ -113,24 +121,7 @@ class Matrix private constructor(
         return Matrix(result, rows, cols)
     }
 
-    override operator fun times(other: Matrix): Matrix {
-        MatrixValidator.validateDimensionsForMultiplication(this, other)
-        val result = DoubleArray(rows * other.cols)
-        var idx = 0
-        for (i in 0 until rows) {
-            val rowOffset = i * cols
-            for (j in 0 until other.cols) {
-                var sum = 0.0
-                var k = 0
-                while (k < cols) {
-                    sum += data[rowOffset + k] * other.data[k * other.cols + j]
-                    k++
-                }
-                result[idx++] = sum
-            }
-        }
-        return Matrix(result, rows, other.cols)
-    }
+    override operator fun times(other: Matrix): Matrix = multiplySequential(other)
 
     override fun transpose(): Matrix {
         val result = DoubleArray(cols * rows)
@@ -140,6 +131,108 @@ class Matrix private constructor(
             }
         }
         return Matrix(result, cols, rows)
+    }
+
+    /**
+     * Блочное умножение без параллелизма.
+     */
+    fun multiplySequential(other: Matrix, blockSize: Int = BLOCK_SIZE): Matrix {
+        MatrixValidator.validateDimensionsForMultiplication(this, other)
+        val aBlocks = this.toBlocks(blockSize)
+        val bBlocks = other.toBlocks(blockSize)
+        val resultData = DoubleArray(rows * other.cols)
+
+        for (bi in 0 until aBlocks.blockRows) {
+            val rowStart = bi * blockSize
+            val blockHeight = aBlocks.blocks[bi][0].numRows
+            for (bj in 0 until bBlocks.blockCols) {
+                val colStart = bj * blockSize
+                val blockWidth = bBlocks.blocks[0][bj].numCols
+
+                var kIndex = 0
+                while (kIndex < aBlocks.blockCols) {
+                    val aBlock = aBlocks.blocks[bi][kIndex]
+                    val bBlock = bBlocks.blocks[kIndex][bj]
+                    require(aBlock.numCols == bBlock.numRows) { "Block dimensions mismatch" }
+
+                    for (r in 0 until blockHeight) {
+                        val destBase = (rowStart + r) * other.cols + colStart
+                        for (c in 0 until blockWidth) {
+                            var acc = 0.0
+                            for (k in 0 until aBlock.numCols) {
+                                acc += aBlock[r, k] * bBlock[k, c]
+                            }
+                            resultData[destBase + c] += acc
+                        }
+                    }
+                    kIndex++
+                }
+            }
+        }
+
+        return Matrix.fromFlat(rows, other.cols, resultData, copy = false)
+    }
+
+    /**
+     * Параллельное блочное умножение (async-задачи на блок C_ij).
+     */
+    suspend fun multiplyParallel(
+        other: Matrix,
+        blockSize: Int = BLOCK_SIZE,
+        parallelism: Int = DEFAULT_PARALLELISM
+    ): Matrix = coroutineScope {
+        MatrixValidator.validateDimensionsForMultiplication(this@Matrix, other)
+        val aBlocks = this@Matrix.toBlocks(blockSize)
+        val bBlocks = other.toBlocks(blockSize)
+        val resultData = DoubleArray(rows * other.cols)
+        val semaphore = Semaphore(parallelism)
+
+        val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
+
+        for (bi in 0 until aBlocks.blockRows) {
+            val rowStart = bi * blockSize
+            val blockHeight = aBlocks.blocks[bi][0].numRows
+            for (bj in 0 until bBlocks.blockCols) {
+                val colStart = bj * blockSize
+                val blockWidth = bBlocks.blocks[0][bj].numCols
+
+                val job = async(Dispatchers.Default) {
+                    semaphore.withPermit {
+                        val local = DoubleArray(blockHeight * blockWidth)
+                        var kIndex = 0
+                        while (kIndex < aBlocks.blockCols) {
+                            val aBlock = aBlocks.blocks[bi][kIndex]
+                            val bBlock = bBlocks.blocks[kIndex][bj]
+                            require(aBlock.numCols == bBlock.numRows) { "Block dimensions mismatch" }
+
+                            for (r in 0 until blockHeight) {
+                                val localBase = r * blockWidth
+                                for (c in 0 until blockWidth) {
+                                    var acc = 0.0
+                                    for (k in 0 until aBlock.numCols) {
+                                        acc += aBlock[r, k] * bBlock[k, c]
+                                    }
+                                    local[localBase + c] += acc
+                                }
+                            }
+                            kIndex++
+                        }
+
+                        for (r in 0 until blockHeight) {
+                            val destBase = (rowStart + r) * other.cols + colStart
+                            val localBase = r * blockWidth
+                            for (c in 0 until blockWidth) {
+                                resultData[destBase + c] = local[localBase + c]
+                            }
+                        }
+                    }
+                }
+                jobs.add(job)
+            }
+        }
+
+        jobs.forEach { it.await() }
+        Matrix.fromFlat(rows, other.cols, resultData, copy = false)
     }
 
     override fun equals(other: Any?): Boolean =
