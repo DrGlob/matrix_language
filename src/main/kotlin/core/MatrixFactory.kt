@@ -3,20 +3,20 @@ package org.example.core
 object MatrixFactory {
     fun create(vararg rows: List<Double>): Matrix = Matrix(rows.toList())
 
-    fun zeros(rows: Int, cols: Int): Matrix =
-        Matrix(List(rows) { List(cols) { 0.0 } })
+    fun zeros(rows: Int, cols: Int): Matrix = Matrix.zeros(rows, cols)
 
     fun ones(rows: Int, cols: Int): Matrix =
-        Matrix(List(rows) { List(cols) { 1.0 } })
+        Matrix.fromFlat(rows, cols, DoubleArray(rows * cols) { 1.0 }, copy = false)
 
-    fun identity(size: Int): Matrix =
-        Matrix(List(size) { i -> List(size) { if (it == i) 1.0 else 0.0 } })
+    fun identity(size: Int): Matrix = Matrix.identity(size)
 
     fun diagonal(vararg values: Double): Matrix {
         val size = values.size
-        return Matrix(List(size) { i ->
-            List(size) { j -> if (i == j) values[i] else 0.0 }
-        })
+        val data = DoubleArray(size * size)
+        for (i in values.indices) {
+            data[i * size + i] = values[i]
+        }
+        return Matrix.fromFlat(size, size, data, copy = false)
     }
 }
 

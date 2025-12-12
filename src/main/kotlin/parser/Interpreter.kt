@@ -60,7 +60,13 @@ class Interpreter {
         }
         defineNative("norm", 1) { args ->
             val matrix = expectMatrix("norm", args[0])
-            val sum = matrix.rows.flatten().sumOf { it * it }
+            var sum = 0.0
+            for (r in 0 until matrix.numRows) {
+                for (c in 0 until matrix.numCols) {
+                    val v = matrix[r, c]
+                    sum += v * v
+                }
+            }
             NumberValue(sqrt(sum))
         }
     }
@@ -320,16 +326,20 @@ class Interpreter {
         }
         return when (target) {
             is MatrixValue -> {
-                val mapped = target.matrix.rows.map { row ->
-                    row.map { value ->
+                val m = target.matrix
+                val data = DoubleArray(m.numRows * m.numCols)
+                var idx = 0
+                for (r in 0 until m.numRows) {
+                    for (c in 0 until m.numCols) {
+                        val value = m[r, c]
                         val result = function.call(this, listOf(NumberValue(value)))
-                        (result as? NumberValue)?.value ?: throw RuntimeError(
+                        data[idx++] = (result as? NumberValue)?.value ?: throw RuntimeError(
                             Token(TokenType.IDENTIFIER, "map", null, 0, 0),
                             "Matrix map expects lambda to return number"
                         )
                     }
                 }
-                MatrixValue(Matrix(mapped))
+                MatrixValue(Matrix.fromFlat(m.numRows, m.numCols, data, copy = false))
             }
             is ListValue -> ListValue(target.items.map { function.call(this, listOf(it)) })
             else -> throw RuntimeError(
@@ -359,11 +369,17 @@ class Interpreter {
         }
         return when (target) {
             is MatrixValue -> {
-                val filteredRows = target.matrix.rows.map { row ->
-                    row.filter { value ->
-                        isTruthy(predicate.call(this, listOf(NumberValue(value))))
+                val filteredRows = mutableListOf<List<Double>>()
+                for (r in 0 until target.matrix.numRows) {
+                    val rowValues = mutableListOf<Double>()
+                    for (c in 0 until target.matrix.numCols) {
+                        val value = target.matrix[r, c]
+                        if (isTruthy(predicate.call(this, listOf(NumberValue(value))))) {
+                            rowValues.add(value)
+                        }
                     }
-                }.filter { it.isNotEmpty() }
+                    if (rowValues.isNotEmpty()) filteredRows.add(rowValues)
+                }
                 if (filteredRows.isEmpty()) return MatrixValue(Matrix(emptyList()))
                 val width = filteredRows.first().size
                 if (!filteredRows.all { it.size == width }) {
@@ -416,7 +432,15 @@ class Interpreter {
 
     private fun flattenCollection(target: Value, opName: String): List<Value> {
         return when (target) {
-            is MatrixValue -> target.matrix.rows.flatten().map { NumberValue(it) }
+            is MatrixValue -> {
+                val list = mutableListOf<Value>()
+                for (r in 0 until target.matrix.numRows) {
+                    for (c in 0 until target.matrix.numCols) {
+                        list.add(NumberValue(target.matrix[r, c]))
+                    }
+                }
+                list
+            }
             is ListValue -> target.items
             else -> throw RuntimeError(
                 Token(TokenType.IDENTIFIER, opName, null, 0, 0),
@@ -459,8 +483,10 @@ class Interpreter {
             is MatrixValue -> {
                 val matrix = value.matrix
                 if (matrix.numRows <= 5 && matrix.numCols <= 5) {
-                    matrix.rows.joinToString("\n") { row ->
-                        "[${row.joinToString(", ") { "%.2f".format(it) }}]"
+                    (0 until matrix.numRows).joinToString("\n") { r ->
+                        val row = (0 until matrix.numCols)
+                            .joinToString(", ") { c -> "%.2f".format(matrix[r, c]) }
+                        "[$row]"
                     }
                 } else {
                     "Matrix(${matrix.numRows}x${matrix.numCols})"

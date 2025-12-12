@@ -12,7 +12,7 @@ fun Matrix.printInfo(label: String = "") {
 
 fun Matrix.toFormattedString(decimalPlaces: Int = 2): String {
     val format = "%.${decimalPlaces}f"
-    return rows.joinToString("\n") { row ->
-        row.joinToString(" ") { format.format(it) }
+    return (0 until numRows).joinToString("\n") { r ->
+        (0 until numCols).joinToString(" ") { c -> format.format(this[r, c]) }
     }
 }

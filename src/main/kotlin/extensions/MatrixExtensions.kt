@@ -13,19 +13,33 @@ fun Matrix.pow(n: Int): Matrix =
     map { it.pow(n) }
 
 fun Matrix.sum(): Double =
-    rows.sumOf { row -> row.sum() }
+    (0 until rows * cols).sumOf { idx ->
+        val r = idx / cols
+        val c = idx % cols
+        this[r, c]
+    }
 
 fun Matrix.mean(): Double =
     sum() / (numRows * numCols)
 
 // Нормализация
 fun Matrix.normalize(): Matrix {
-    val mean = mean()
-    val maxVal = rows.flatten().maxOrNull() ?: 0.0
-    val minVal = rows.flatten().minOrNull() ?: 0.0
+    var maxVal = Double.NEGATIVE_INFINITY
+    var minVal = Double.POSITIVE_INFINITY
+    for (r in 0 until numRows) {
+        for (c in 0 until numCols) {
+            val v = this[r, c]
+            if (v > maxVal) maxVal = v
+            if (v < minVal) minVal = v
+        }
+    }
+    if (maxVal == Double.NEGATIVE_INFINITY) {
+        maxVal = 0.0
+        minVal = 0.0
+    }
     if (maxVal == minVal) {
         // Avoid division by zero for constant matrices
-        return Matrix(List(numRows) { List(numCols) { 0.0 } })
+        return Matrix.fromFlat(numRows, numCols, DoubleArray(numRows * numCols), copy = false)
     }
     return map { (it - minVal) / (maxVal - minVal) }
 }
