@@ -10,9 +10,11 @@ class Evaluator(val interpreter: Interpreter) {
             is Expr.StringLiteral -> StringValue(expr.value)
             is Expr.Variable -> env.get(expr.name)
             is Expr.Assign -> {
-                val value = eval(expr.value, env)
-                throw RuntimeError(Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                    "Reassignment is not supported with immutable environment")
+                eval(expr.value, env)
+                throw runtimeError(
+                    "Reassignment is not supported with immutable environment",
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
+                )
             }
             is Expr.IfExpr -> {
                 val condition = eval(expr.condition, env)
@@ -28,7 +30,7 @@ class Evaluator(val interpreter: Interpreter) {
                 val right = eval(expr.right, env)
                 when (expr.operator.type) {
                     TokenType.MINUS -> NumberValue(-expectNumber(expr.operator.lexeme, right))
-                    else -> throw RuntimeError(expr.operator, "Unknown operator")
+                    else -> throw runtimeError("Unknown operator", expr.operator)
                 }
             }
             is Expr.CallExpr -> evalCall(expr, env)
@@ -55,19 +57,19 @@ class Evaluator(val interpreter: Interpreter) {
                 left is NumberValue && right is NumberValue -> NumberValue(left.value + right.value)
                 left is NumberValue && right is MatrixValue -> MatrixValue(right.matrix * left.value)
                 left is MatrixValue && right is NumberValue -> MatrixValue(left.matrix * right.value)
-                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+                else -> throw runtimeError("Operands must be numbers or matrices", expr.operator)
             }
             TokenType.MINUS -> when {
                 left is MatrixValue && right is MatrixValue -> MatrixValue(left.matrix - right.matrix)
                 left is NumberValue && right is NumberValue -> NumberValue(left.value - right.value)
-                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+                else -> throw runtimeError("Operands must be numbers or matrices", expr.operator)
             }
             TokenType.MULTIPLY -> when {
                 left is MatrixValue && right is MatrixValue -> MatrixValue(left.matrix * right.matrix)
                 left is NumberValue && right is MatrixValue -> MatrixValue(right.matrix * left.value)
                 left is MatrixValue && right is NumberValue -> MatrixValue(left.matrix * right.value)
                 left is NumberValue && right is NumberValue -> NumberValue(left.value * right.value)
-                else -> throw RuntimeError(expr.operator, "Operands must be numbers or matrices")
+                else -> throw runtimeError("Operands must be numbers or matrices", expr.operator)
             }
             TokenType.DIVIDE -> {
                 val l = expectNumber(expr.operator.lexeme, left)
@@ -80,7 +82,7 @@ class Evaluator(val interpreter: Interpreter) {
             TokenType.GT -> BoolValue(expectNumber(expr.operator.lexeme, left) > expectNumber(expr.operator.lexeme, right))
             TokenType.LTE -> BoolValue(expectNumber(expr.operator.lexeme, left) <= expectNumber(expr.operator.lexeme, right))
             TokenType.GTE -> BoolValue(expectNumber(expr.operator.lexeme, left) >= expectNumber(expr.operator.lexeme, right))
-            else -> throw RuntimeError(expr.operator, "Unknown operator")
+            else -> throw runtimeError("Unknown operator", expr.operator)
         }
     }
 
@@ -91,7 +93,7 @@ class Evaluator(val interpreter: Interpreter) {
         val callable = expectCallable("call", callee)
         if (arguments.size != callable.arity()) {
             val dummyToken = Token(TokenType.IDENTIFIER, "function_call", null, 0, 0)
-            throw RuntimeError(dummyToken, "Expected ${callable.arity()} arguments but got ${arguments.size}")
+            throw runtimeError("Expected ${callable.arity()} arguments but got ${arguments.size}", dummyToken)
         }
         return callable.call(this, arguments)
     }
@@ -103,29 +105,37 @@ class Evaluator(val interpreter: Interpreter) {
         return when (expr.method) {
             "map" -> {
                 val fn = expectCallable("map", args.firstOrNull()
-                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects a lambda"))
+                    ?: throw runtimeError(
+                        "Method '${expr.method}' expects a lambda",
+                        Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
+                    ))
                 applyMap(receiver, fn)
             }
             "reduce" -> {
                 val initial = args.getOrNull(0)
-                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects initial value and lambda")
+                    ?: throw runtimeError(
+                        "Method '${expr.method}' expects initial value and lambda",
+                        Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
+                    )
                 val fn = expectCallable("reduce", args.getOrNull(1)
-                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects initial value and lambda"))
+                    ?: throw runtimeError(
+                        "Method '${expr.method}' expects initial value and lambda",
+                        Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
+                    ))
                 applyReduce(receiver, initial, fn)
             }
             "zip" -> {
                 val other = args.getOrNull(0)
-                    ?: throw RuntimeError(Token(TokenType.IDENTIFIER, expr.method, null, 0, 0),
-                        "Method '${expr.method}' expects another collection")
+                    ?: throw runtimeError(
+                        "Method '${expr.method}' expects another collection",
+                        Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
+                    )
                 applyZip(receiver, other)
             }
             "unzip" -> applyUnzip(receiver)
             else -> {
                 val dummyToken = Token(TokenType.IDENTIFIER, expr.method, null, 0, 0)
-                throw RuntimeError(dummyToken, "Unknown method '${expr.method}'")
+                throw runtimeError("Unknown method '${expr.method}'", dummyToken)
             }
         }
     }
@@ -137,58 +147,60 @@ class Evaluator(val interpreter: Interpreter) {
                 "rows" -> NumberValue(obj.matrix.numRows.toDouble())
                 "cols" -> NumberValue(obj.matrix.numCols.toDouble())
                 "transpose" -> MatrixValue(obj.matrix.transpose())
-                else -> throw RuntimeError(
-                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                    "Undefined property '${expr.name}' on matrix"
+                else -> throw runtimeError(
+                    "Undefined property '${expr.name}' on matrix",
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
                 )
             }
             is PairValue -> when (expr.name) {
                 "first" -> obj.first
                 "second" -> obj.second
-                else -> throw RuntimeError(
-                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                    "Undefined property '${expr.name}' on pair"
+                else -> throw runtimeError(
+                    "Undefined property '${expr.name}' on pair",
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
                 )
             }
             is ListValue -> when (expr.name) {
                 "size" -> NumberValue(obj.items.size.toDouble())
-                else -> throw RuntimeError(
-                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
-                    "Undefined property '${expr.name}' on list"
+                else -> throw runtimeError(
+                    "Undefined property '${expr.name}' on list",
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
                 )
             }
             else -> {
                 val dummyToken = Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
-                throw RuntimeError(dummyToken, "Undefined property '${expr.name}'")
+                throw runtimeError("Undefined property '${expr.name}'", dummyToken)
             }
         }
     }
 
     fun expectCallable(name: String, value: Value): CallableValue {
-        return value as? CallableValue ?: throw RuntimeError(
-            Token(TokenType.IDENTIFIER, name, null, 0, 0),
-            "Expected lambda/function as argument for '$name'"
+        return value as? CallableValue ?: throw runtimeError(
+            "Expected lambda/function as argument for '$name'",
+            Token(TokenType.IDENTIFIER, name, null, 0, 0)
         )
     }
 
     fun expectNumber(name: String, value: Value): Double {
-        return (value as? NumberValue)?.value ?: throw RuntimeError(
-            Token(TokenType.IDENTIFIER, name, null, 0, 0),
-            "Expected number value"
+        return (value as? NumberValue)?.value ?: throw runtimeError(
+            "Expected number value",
+            Token(TokenType.IDENTIFIER, name, null, 0, 0)
         )
     }
 
     fun expectMatrix(name: String, value: Value): Matrix {
-        return (value as? MatrixValue)?.matrix ?: throw RuntimeError(
-            Token(TokenType.IDENTIFIER, name, null, 0, 0),
-            "Expected matrix value"
+        return (value as? MatrixValue)?.matrix ?: throw runtimeError(
+            "Expected matrix value",
+            Token(TokenType.IDENTIFIER, name, null, 0, 0)
         )
     }
 
     fun applyMap(target: Value, function: CallableValue): Value {
         if (function.arity() != 1) {
-            throw RuntimeError(Token(TokenType.IDENTIFIER, "map", null, 0, 0),
-                "Expected function with 1 parameter for 'map'")
+            throw runtimeError(
+                "Expected function with 1 parameter for 'map'",
+                Token(TokenType.IDENTIFIER, "map", null, 0, 0)
+            )
         }
         return when (target) {
             is MatrixValue -> {
@@ -197,25 +209,27 @@ class Evaluator(val interpreter: Interpreter) {
                     Matrix.fromInitializer(m.numRows, m.numCols) { r, c ->
                         val value = m[r, c]
                         val result = function.call(this, listOf(NumberValue(value)))
-                        (result as? NumberValue)?.value ?: throw RuntimeError(
-                            Token(TokenType.IDENTIFIER, "map", null, 0, 0),
-                            "Matrix map expects lambda to return number"
+                        (result as? NumberValue)?.value ?: throw runtimeError(
+                            "Matrix map expects lambda to return number",
+                            Token(TokenType.IDENTIFIER, "map", null, 0, 0)
                         )
                     }
                 )
             }
             is ListValue -> ListValue(target.items.map { function.call(this, listOf(it)) })
-            else -> throw RuntimeError(
-                Token(TokenType.IDENTIFIER, "map", null, 0, 0),
-                "Can only map over matrices or lists"
+            else -> throw runtimeError(
+                "Can only map over matrices or lists",
+                Token(TokenType.IDENTIFIER, "map", null, 0, 0)
             )
         }
     }
 
     fun applyReduce(target: Value, initial: Value, function: CallableValue): Value {
         if (function.arity() != 2) {
-            throw RuntimeError(Token(TokenType.IDENTIFIER, "reduce", null, 0, 0),
-                "Expected function with 2 parameters for 'reduce'")
+            throw runtimeError(
+                "Expected function with 2 parameters for 'reduce'",
+                Token(TokenType.IDENTIFIER, "reduce", null, 0, 0)
+            )
         }
         val items = flattenCollection(target, "reduce")
         var accumulator = initial
@@ -227,8 +241,10 @@ class Evaluator(val interpreter: Interpreter) {
 
     fun applyFilter(target: Value, predicate: CallableValue): Value {
         if (predicate.arity() != 1) {
-            throw RuntimeError(Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
-                "Expected function with 1 parameter for 'filter'")
+            throw runtimeError(
+                "Expected function with 1 parameter for 'filter'",
+                Token(TokenType.IDENTIFIER, "filter", null, 0, 0)
+            )
         }
         return when (target) {
             is MatrixValue -> {
@@ -241,17 +257,17 @@ class Evaluator(val interpreter: Interpreter) {
                 if (filteredRows.isEmpty()) return MatrixValue(Matrix(emptyList()))
                 val width = filteredRows.first().size
                 if (!filteredRows.all { it.size == width }) {
-                    throw RuntimeError(
-                        Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
-                        "Filter over matrix must keep consistent row sizes"
+                    throw runtimeError(
+                        "Filter over matrix must keep consistent row sizes",
+                        Token(TokenType.IDENTIFIER, "filter", null, 0, 0)
                     )
                 }
                 MatrixValue(Matrix(filteredRows))
             }
             is ListValue -> ListValue(target.items.filter { isTruthy(predicate.call(this, listOf(it))) })
-            else -> throw RuntimeError(
-                Token(TokenType.IDENTIFIER, "filter", null, 0, 0),
-                "Can only filter matrices or lists"
+            else -> throw runtimeError(
+                "Can only filter matrices or lists",
+                Token(TokenType.IDENTIFIER, "filter", null, 0, 0)
             )
         }
     }
@@ -267,9 +283,9 @@ class Evaluator(val interpreter: Interpreter) {
     fun applyUnzip(value: Value): Value {
         val pairs = when (value) {
             is ListValue -> value.items
-            else -> throw RuntimeError(
-                Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
-                "unzip expects a list of pairs"
+            else -> throw runtimeError(
+                "unzip expects a list of pairs",
+                Token(TokenType.IDENTIFIER, "unzip", null, 0, 0)
             )
         }
 
@@ -277,9 +293,9 @@ class Evaluator(val interpreter: Interpreter) {
         val second = mutableListOf<Value>()
         for (pair in pairs) {
             if (pair !is PairValue) {
-                throw RuntimeError(
-                    Token(TokenType.IDENTIFIER, "unzip", null, 0, 0),
-                    "unzip expects a list of pairs"
+                throw runtimeError(
+                    "unzip expects a list of pairs",
+                    Token(TokenType.IDENTIFIER, "unzip", null, 0, 0)
                 )
             }
             first.add(pair.first)
@@ -301,9 +317,9 @@ class Evaluator(val interpreter: Interpreter) {
                 list
             }
             is ListValue -> target.items
-            else -> throw RuntimeError(
-                Token(TokenType.IDENTIFIER, opName, null, 0, 0),
-                "$opName expects a matrix or a list"
+            else -> throw runtimeError(
+                "$opName expects a matrix or a list",
+                Token(TokenType.IDENTIFIER, opName, null, 0, 0)
             )
         }
     }

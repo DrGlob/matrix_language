@@ -64,6 +64,10 @@ data class UserFunctionValue(
             UnitValue
         } catch (returnValue: ReturnException) {
             returnValue.value
+        } catch (e: MatrixLangRuntimeException) {
+            throw e
+        } catch (e: Exception) {
+            throw runtimeError(e.message ?: "Error in function call", cause = e)
         }
     }
 

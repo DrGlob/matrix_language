@@ -1,7 +1,5 @@
 package org.example.parser
 
-// Исключения
-class RuntimeError(val token: Token, message: String) : RuntimeException(message)
 class ReturnException(val value: Value) : RuntimeException("Return statement")
 
 class Interpreter {
@@ -19,12 +17,12 @@ class Interpreter {
             for (statement in statements) {
                 execute(statement)
             }
-        } catch (error: RuntimeError) {
-            println("Runtime error: ${error.message}")
         } catch (error: ReturnException) {
-            println("Warning: return statement outside function")
+            throw runtimeError("Return statement outside function", cause = error)
+        } catch (error: MatrixLangRuntimeException) {
+            throw error
         } catch (error: Exception) {
-            println("Error: ${error.message}")
+            throw runtimeError(error.message ?: "Unexpected error", cause = error)
         }
     }
 

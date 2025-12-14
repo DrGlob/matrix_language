@@ -1,8 +1,8 @@
 package cli
 
-
 import org.example.parser.Interpreter
 import org.example.parser.Lexer
+import org.example.parser.MatrixLangRuntimeException
 import org.example.parser.Parser
 import org.example.parser.Token
 import org.example.parser.TokenType
@@ -19,7 +19,7 @@ object FileRunner {
 
         try {
             val source = file.readText()
-            run(source)
+            run(source, Interpreter())
 
             if (hadError) exitProcess(65)
             if (hadRuntimeError) exitProcess(70)
@@ -33,18 +33,21 @@ object FileRunner {
         println("Matrix DSL REPL")
         println("Type 'exit' to quit")
 
+        val interpreter = Interpreter()
+
         while (true) {
             print("> ")
             val line = readLine() ?: break
 
             if (line.trim() == "exit") break
 
-            run(line)
+            run(line, interpreter)
             hadError = false
+            hadRuntimeError = false
         }
     }
 
-    fun run(source: String) {
+    fun run(source: String, interpreter: Interpreter = Interpreter()) {
         val lexer = Lexer(source)
         val tokens = lexer.scanTokens()
 
@@ -53,8 +56,18 @@ object FileRunner {
 
         if (hadError) return
 
-        val interpreter = Interpreter()
-        interpreter.interpret(statements)
+        try {
+            if (statements.size == 1 && statements.first() is org.example.parser.Stmt.Expression) {
+                val expr = (statements.first() as org.example.parser.Stmt.Expression).expression
+                val value = interpreter.evaluator.eval(expr, interpreter.environment)
+                println(interpreter.evaluator.stringify(value))
+            } else {
+                interpreter.interpret(statements)
+            }
+        } catch (e: MatrixLangRuntimeException) {
+            println("Runtime error at line ${e.line}, column ${e.column}: ${e.message}")
+            hadRuntimeError = true
+        }
     }
 
     fun error(line: Int, column: Int, message: String) {

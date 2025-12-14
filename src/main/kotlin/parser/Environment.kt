@@ -10,6 +10,9 @@ data class Environment(
     fun get(name: String): Value {
         return values[name]
             ?: parent?.get(name)
-            ?: throw RuntimeError(Token(TokenType.IDENTIFIER, name, null, 0, 0), "Undefined variable '$name'")
+            ?: throw runtimeError(
+                "Undefined variable '$name'",
+                Token(TokenType.IDENTIFIER, name, null, 0, 0)
+            )
     }
 }
