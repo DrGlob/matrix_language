@@ -1,12 +1,18 @@
 package org.example.core
 
-import org.example.utils.MatrixValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlin.math.max
+import org.example.utils.MatrixValidator
+
+enum class MultiplicationAlgorithm {
+    SEQUENTIAL,
+    PARALLEL,
+    STRASSEN
+}
 
 interface MatrixOperations {
     operator fun plus(other: Matrix): Matrix
@@ -28,6 +34,7 @@ class Matrix private constructor(
 
     companion object {
         private val DEFAULT_PARALLELISM = max(1, Runtime.getRuntime().availableProcessors())
+        const val STRASSEN_THRESHOLD = 64
 
         operator fun invoke(rows: List<List<Double>>): Matrix =
             fromFlat(rows.size, if (rows.isNotEmpty()) rows[0].size else 0, flatten(rows), copy = false)
@@ -134,6 +141,21 @@ class Matrix private constructor(
     }
 
     /**
+     * Выбор алгоритма умножения (по умолчанию — блочное последовательное).
+     */
+    fun multiply(
+        other: Matrix,
+        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL,
+        blockSize: Int = BLOCK_SIZE,
+        parallelism: Int = DEFAULT_PARALLELISM,
+        strassenThreshold: Int = STRASSEN_THRESHOLD
+    ): Matrix = when (algorithm) {
+        MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
+        MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
+        MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
+    }
+
+    /**
      * Блочное умножение без параллелизма.
      */
     fun multiplySequential(other: Matrix, blockSize: Int = BLOCK_SIZE): Matrix {
@@ -233,6 +255,118 @@ class Matrix private constructor(
 
         jobs.forEach { it.await() }
         Matrix.fromFlat(rows, other.cols, resultData, copy = false)
+    }
+
+    /**
+     * Реализация Штрассена для квадратных матриц.
+     * Для некратных размеров выполняется паддинг нулями до ближайшей степени 2,
+     * затем результат усекается обратно до исходных размеров.
+     */
+    fun multiplyStrassen(other: Matrix, threshold: Int = STRASSEN_THRESHOLD): Matrix {
+        MatrixValidator.validateDimensionsForMultiplication(this, other)
+        require(numRows == numCols && other.numRows == other.numCols && numRows == other.numRows) {
+            "Strassen implementation currently supports only square matrices of equal size"
+        }
+
+        val originalSize = numRows
+        val targetSize = nextPowerOfTwo(originalSize)
+
+        val aPadded = if (targetSize == numRows) this else pad(targetSize, targetSize)
+        val bPadded = if (targetSize == other.numRows) other else other.pad(targetSize, targetSize)
+
+        val resultPadded = strassenRecursive(aPadded, bPadded, targetSize, threshold)
+
+        return if (targetSize == originalSize) {
+            resultPadded
+        } else {
+            resultPadded.trim(originalSize, other.numCols)
+        }
+    }
+
+    private fun runBlockingParallel(other: Matrix, blockSize: Int, parallelism: Int): Matrix =
+        kotlinx.coroutines.runBlocking {
+            multiplyParallel(other, blockSize, parallelism)
+        }
+
+    private fun pad(targetRows: Int, targetCols: Int): Matrix =
+        fromInitializer(targetRows, targetCols) { r, c ->
+            if (r < rows && c < cols) this[r, c] else 0.0
+        }
+
+    private fun trim(targetRows: Int, targetCols: Int): Matrix =
+        fromInitializer(targetRows, targetCols) { r, c -> this[r, c] }
+
+    private fun strassenRecursive(a: Matrix, b: Matrix, size: Int, threshold: Int): Matrix {
+        if (size <= threshold) return a.multiplySequential(b)
+
+        val mid = size / 2
+
+        val a11 = a.subMatrix(0, 0, mid, mid)
+        val a12 = a.subMatrix(0, mid, mid, size - mid)
+        val a21 = a.subMatrix(mid, 0, size - mid, mid)
+        val a22 = a.subMatrix(mid, mid, size - mid, size - mid)
+
+        val b11 = b.subMatrix(0, 0, mid, mid)
+        val b12 = b.subMatrix(0, mid, mid, size - mid)
+        val b21 = b.subMatrix(mid, 0, size - mid, mid)
+        val b22 = b.subMatrix(mid, mid, size - mid, size - mid)
+
+        val p1 = strassenRecursive(a11 + a22, b11 + b22, mid, threshold)
+        val p2 = strassenRecursive(a21 + a22, b11, mid, threshold)
+        val p3 = strassenRecursive(a11, b12 - b22, mid, threshold)
+        val p4 = strassenRecursive(a22, b21 - b11, mid, threshold)
+        val p5 = strassenRecursive(a11 + a12, b22, mid, threshold)
+        val p6 = strassenRecursive(a21 - a11, b11 + b12, mid, threshold)
+        val p7 = strassenRecursive(a12 - a22, b21 + b22, mid, threshold)
+
+        val c11 = p1 + p4 - p5 + p7
+        val c12 = p3 + p5
+        val c21 = p2 + p4
+        val c22 = p1 - p2 + p3 + p6
+
+        return combineQuadrants(c11, c12, c21, c22, size, size)
+    }
+
+    private fun subMatrix(row: Int, col: Int, subRows: Int, subCols: Int): Matrix =
+        fromInitializer(subRows, subCols) { r, c -> this[row + r, col + c] }
+
+    private fun combineQuadrants(
+        c11: Matrix,
+        c12: Matrix,
+        c21: Matrix,
+        c22: Matrix,
+        totalRows: Int,
+        totalCols: Int
+    ): Matrix {
+        val data = DoubleArray(totalRows * totalCols)
+        val midRow = c11.numRows
+        val midCol = c11.numCols
+
+        for (r in 0 until midRow) {
+            val base = r * totalCols
+            for (c in 0 until midCol) {
+                data[base + c] = c11[r, c]
+            }
+            for (c in 0 until c12.numCols) {
+                data[base + midCol + c] = c12[r, c]
+            }
+        }
+        for (r in 0 until c21.numRows) {
+            val base = (midRow + r) * totalCols
+            for (c in 0 until c21.numCols) {
+                data[base + c] = c21[r, c]
+            }
+            for (c in 0 until c22.numCols) {
+                data[base + midCol + c] = c22[r, c]
+            }
+        }
+        return Matrix.fromFlat(totalRows, totalCols, data, copy = false)
+    }
+
+    private fun nextPowerOfTwo(n: Int): Int {
+        var v = 1
+        while (v < n) v = v shl 1
+        return v
     }
 
     override fun equals(other: Any?): Boolean =

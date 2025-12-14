@@ -36,6 +36,37 @@ class BlockMatrix internal constructor(
      */
     fun toMatrix(): Matrix = fromBlocks(blocks.map { row -> row.map { it.toMatrix() } })
 
+    operator fun plus(other: BlockMatrix): BlockMatrix {
+        requireSameDimensions(other, "add")
+        val result = source + other.source
+        val newBlockSize = min(blockSize, other.blockSize)
+        return result.toBlocks(newBlockSize)
+    }
+
+    operator fun minus(other: BlockMatrix): BlockMatrix {
+        requireSameDimensions(other, "subtract")
+        val result = source - other.source
+        val newBlockSize = min(blockSize, other.blockSize)
+        return result.toBlocks(newBlockSize)
+    }
+
+    fun multiply(
+        other: BlockMatrix,
+        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL,
+        blockSizeOverride: Int = blockSize,
+        parallelism: Int = Runtime.getRuntime().availableProcessors(),
+        strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD
+    ): BlockMatrix {
+        val result = source.multiply(
+            other.source,
+            algorithm = algorithm,
+            blockSize = blockSizeOverride,
+            parallelism = parallelism,
+            strassenThreshold = strassenThreshold
+        )
+        return result.toBlocks(blockSizeOverride)
+    }
+
     companion object {
         const val DEFAULT_BLOCK_SIZE = 128
 
@@ -91,6 +122,12 @@ class BlockMatrix internal constructor(
             }
 
             return Matrix.fromFlat(totalRows, totalCols, data, copy = false)
+        }
+    }
+
+    private fun requireSameDimensions(other: BlockMatrix, op: String) {
+        require(rows == other.rows && cols == other.cols) {
+            "Cannot $op block matrices of different shapes: ${rows}x${cols} vs ${other.rows}x${other.cols}"
         }
     }
 }

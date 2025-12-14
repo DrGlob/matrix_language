@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.1.10"
-    application  // <-- ДОБАВЬТЕ ЭТУ СТРОКУ!
+    application
 }
 
 group = "org.example"
@@ -23,12 +23,11 @@ kotlin {
     jvmToolchain(21)
 }
 
-// Указываем главный класс для application plugin
 application {
     mainClass.set("org.example.MainKt")
 }
 
-// Настройка задачи run для приема аргументов
+// задача run для приема аргументов
 tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 
@@ -37,7 +36,7 @@ tasks.named<JavaExec>("run") {
     }
 }
 
-// Альтернативная задача для запуска файлов
+// задача для запуска файлов
 tasks.register<JavaExec>("runFile") {
     group = "application"
     description = "Run matrix DSL file"
