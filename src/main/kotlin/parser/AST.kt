@@ -7,7 +7,7 @@ enum class TokenType {
     NUMBER, STRING, IDENTIFIER,
 
     // Ключевые слова
-    LET, IF, THEN, ELSE, FOR, IN, FUNCTION, RETURN, PRINT,
+    LET, IF, THEN, ELSE, IN, FUNCTION, RETURN, PRINT,
 
     // Функции
     ZEROS, ONES, IDENTITY, TRANSPOSE, ROWS, COLS,

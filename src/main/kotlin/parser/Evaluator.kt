@@ -11,8 +11,8 @@ class Evaluator(val interpreter: Interpreter) {
             is Expr.Variable -> env.get(expr.name)
             is Expr.Assign -> {
                 val value = eval(expr.value, env)
-                env.assign(expr.name, value)
-                value
+                throw RuntimeError(Token(TokenType.IDENTIFIER, expr.name, null, 0, 0),
+                    "Reassignment is not supported with immutable environment")
             }
             is Expr.IfExpr -> {
                 val condition = eval(expr.condition, env)
@@ -20,8 +20,7 @@ class Evaluator(val interpreter: Interpreter) {
             }
             is Expr.LetInExpr -> {
                 val bound = eval(expr.boundExpr, env)
-                val scoped = Environment(env)
-                scoped.define(expr.name, bound)
+                val scoped = Environment(parent = env).define(expr.name, bound)
                 eval(expr.bodyExpr, scoped)
             }
             is Expr.Binary -> evalBinary(expr, env)

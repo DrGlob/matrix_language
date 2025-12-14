@@ -35,9 +35,9 @@ data class FunctionValue(
     override fun arity(): Int = params.size
 
     override fun call(evaluator: Evaluator, arguments: List<Value>): Value {
-        val environment = Environment(closure)
+        var environment = Environment(parent = closure)
         for ((i, param) in params.withIndex()) {
-            environment.define(param, arguments.getOrElse(i) { UnitValue })
+            environment = environment.define(param, arguments.getOrElse(i) { UnitValue })
         }
         return evaluator.eval(body, environment)
     }
@@ -54,9 +54,9 @@ data class UserFunctionValue(
     override fun arity(): Int = params.size
 
     override fun call(evaluator: Evaluator, arguments: List<Value>): Value {
-        val environment = Environment(closure)
+        var environment = Environment(parent = closure)
         for ((i, param) in params.withIndex()) {
-            environment.define(param, arguments.getOrElse(i) { UnitValue })
+            environment = environment.define(param, arguments.getOrElse(i) { UnitValue })
         }
 
         return try {

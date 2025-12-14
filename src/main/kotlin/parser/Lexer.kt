@@ -12,7 +12,6 @@ class Lexer(private val source: String) {
         "if" to TokenType.IF,
         "then" to TokenType.THEN,
         "else" to TokenType.ELSE,
-        "for" to TokenType.FOR,
         "in" to TokenType.IN,
         "function" to TokenType.FUNCTION,
         "return" to TokenType.RETURN,

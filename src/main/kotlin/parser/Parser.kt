@@ -51,7 +51,6 @@ class Parser(private val tokens: List<Token>) {
             match(TokenType.IF) -> ifStatement()
             match(TokenType.RETURN) -> returnStatement()
             match(TokenType.LBRACE) -> block()
-            match(TokenType.FOR) -> throw error(previous(), "'for' loops are no longer supported")
             else -> expressionStatement()
         }
     }
