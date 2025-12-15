@@ -156,6 +156,11 @@ class Matrix private constructor(
     }
 
     /**
+     * Масштабирование матрицы скаляром (alias для операторной версии).
+     */
+    fun scale(alpha: Double): Matrix = this * alpha
+
+    /**
      * Блочное умножение без параллелизма.
      */
     fun multiplySequential(other: Matrix, blockSize: Int = BLOCK_SIZE): Matrix {
