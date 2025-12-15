@@ -1,0 +1,5 @@
+let arr = [1, 2, 3, 4];
+let doubled = arr.map { it * 2 };
+let sum = arr.reduce(0) { acc, x -> acc + x };
+print(doubled);
+print(sum);

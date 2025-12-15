@@ -1,0 +1,5 @@
+// Вычисление полинома 2x^2 + 3x + 1 при x=2 через reduce (метод Горнера)
+let coeff = [2, 3, 1];
+let x = 2;
+let value = coeff.reduce(0) { acc, c -> acc * x + c };
+print(value);
