@@ -148,11 +148,39 @@ class Matrix private constructor(
         algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL,
         blockSize: Int = BLOCK_SIZE,
         parallelism: Int = DEFAULT_PARALLELISM,
-        strassenThreshold: Int = STRASSEN_THRESHOLD
-    ): Matrix = when (algorithm) {
-        MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
-        MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
-        MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
+        strassenThreshold: Int = STRASSEN_THRESHOLD,
+        logMetrics: Boolean = false
+    ): Matrix {
+        val rowsA = numRows
+        val colsB = other.numCols
+        val inner = numCols
+
+        val (result, duration) = kotlin.run {
+            if (!logMetrics) {
+                return@run when (algorithm) {
+                    MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
+                    MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
+                    MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
+                } to -1L
+            }
+            var produced: Matrix
+            val elapsed = kotlin.system.measureTimeMillis {
+                produced = when (algorithm) {
+                    MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
+                    MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
+                    MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
+                }
+            }
+            produced to elapsed
+        }
+
+        if (logMetrics) {
+            println(
+                "Matrix multiply: ${rowsA}x${inner} * ${other.numRows}x${colsB} " +
+                        "algo=$algorithm time=${duration}ms cost≈${rowsA * colsB * inner}"
+            )
+        }
+        return result
     }
 
     /**
