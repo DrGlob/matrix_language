@@ -18,6 +18,23 @@ object MatrixFactory {
         }
         return Matrix.fromFlat(size, size, data, copy = false)
     }
+
+    fun polynomial(
+        base: Matrix,
+        coefficients: List<Double>,
+        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
+        blockSize: Int = BLOCK_SIZE,
+        parallelism: Int = Runtime.getRuntime().availableProcessors(),
+        strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD,
+        logMetrics: Boolean = false
+    ): Matrix = base.polyEval(
+        coefficients,
+        algorithm = algorithm,
+        blockSize = blockSize,
+        parallelism = parallelism,
+        strassenThreshold = strassenThreshold,
+        logMetrics = logMetrics
+    )
 }
 
 // Extension-функции для удобства
@@ -25,3 +42,20 @@ fun matrixOf(vararg rows: List<Double>): Matrix = MatrixFactory.create(*rows)
 fun zeros(rows: Int, cols: Int): Matrix = MatrixFactory.zeros(rows, cols)
 fun ones(rows: Int, cols: Int): Matrix = MatrixFactory.ones(rows, cols)
 fun identity(size: Int): Matrix = MatrixFactory.identity(size)
+fun polynomial(
+    base: Matrix,
+    coefficients: List<Double>,
+    algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
+    blockSize: Int = BLOCK_SIZE,
+    parallelism: Int = Runtime.getRuntime().availableProcessors(),
+    strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD,
+    logMetrics: Boolean = false
+): Matrix = MatrixFactory.polynomial(
+    base,
+    coefficients,
+    algorithm,
+    blockSize,
+    parallelism,
+    strassenThreshold,
+    logMetrics
+)
