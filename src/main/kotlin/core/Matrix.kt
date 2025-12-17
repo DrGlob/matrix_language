@@ -189,6 +189,46 @@ class Matrix private constructor(
     fun scale(alpha: Double): Matrix = this * alpha
 
     /**
+     * Вычисление матричного полинома P(A) по схеме Горнера.
+     *
+     * Коэффициенты задаются в порядке убывания степени: [a_n, a_{n-1}, ..., a_0],
+     * полином считается как (((a_n I) * A + a_{n-1} I) * A + ... + a_0 I).
+     *
+     * По умолчанию умножения выполняются параллельным блочным алгоритмом.
+     */
+    fun polyEval(
+        coefficients: List<Double>,
+        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
+        blockSize: Int = BLOCK_SIZE,
+        parallelism: Int = DEFAULT_PARALLELISM,
+        strassenThreshold: Int = STRASSEN_THRESHOLD,
+        logMetrics: Boolean = false
+    ): Matrix {
+        require(coefficients.isNotEmpty()) { "Polynomial coefficients must not be empty" }
+        require(rows == cols) { "Matrix polynomials require square matrices: got ${rows}x$cols" }
+
+        val id = identity(rows)
+        var acc = id * coefficients[0]
+        var idx = 1
+        while (idx < coefficients.size) {
+            acc = acc.multiply(
+                this,
+                algorithm = algorithm,
+                blockSize = blockSize,
+                parallelism = parallelism,
+                strassenThreshold = strassenThreshold,
+                logMetrics = logMetrics
+            )
+            val coeff = coefficients[idx]
+            if (coeff != 0.0) {
+                acc = acc + id * coeff
+            }
+            idx++
+        }
+        return acc
+    }
+
+    /**
      * Блочное умножение без параллелизма.
      */
     fun multiplySequential(other: Matrix, blockSize: Int = BLOCK_SIZE): Matrix {

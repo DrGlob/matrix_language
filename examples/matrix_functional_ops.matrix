@@ -1,0 +1,16 @@
+// Функциональный стиль для матриц
+
+let a = [[1, 2], [3, 4]];
+
+// map по элементам
+let doubled = a.map { it * 2 };
+
+// reduce по всем элементам (сворачиваем плоско)
+let sum = a.reduce(0) { acc, x -> acc + x };
+
+// транспонирование как функция из stdlib
+let transposed = transpose(a);
+
+print(doubled);
+print(sum);
+print(transposed);

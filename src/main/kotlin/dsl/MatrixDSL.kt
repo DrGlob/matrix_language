@@ -1,6 +1,8 @@
 package org.example.dsl
 
+import org.example.core.BLOCK_SIZE
 import org.example.core.Matrix
+import org.example.core.MultiplicationAlgorithm
 
 class MatrixDSL {
     private val context = MatrixContext()
@@ -42,6 +44,23 @@ class MatrixDSL {
     ): List<Double> {
         return controlFlow.mapRange(start, end, transform)
     }
+
+    fun poly(
+        base: Matrix,
+        coefficients: List<Double>,
+        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
+        blockSize: Int = BLOCK_SIZE,
+        parallelism: Int = Runtime.getRuntime().availableProcessors(),
+        strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD,
+        logMetrics: Boolean = false
+    ): Matrix = base.polyEval(
+        coefficients,
+        algorithm = algorithm,
+        blockSize = blockSize,
+        parallelism = parallelism,
+        strassenThreshold = strassenThreshold,
+        logMetrics = logMetrics
+    )
 
     fun compute(block: MatrixDSL.() -> Matrix): Matrix {
         return block()

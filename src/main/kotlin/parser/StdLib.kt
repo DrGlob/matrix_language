@@ -1,6 +1,7 @@
 package org.example.parser
 
 import org.example.core.MatrixFactory
+import org.example.core.MultiplicationAlgorithm
 import kotlin.math.sqrt
 
 object StdLib {
@@ -9,6 +10,37 @@ object StdLib {
 
         fun add(name: String, arity: Int, impl: (Evaluator, List<Value>) -> Value) {
             env = env.define(name, NativeFunctionValue(arity, impl))
+        }
+
+        fun coefficients(name: String, value: Value, ev: Evaluator): List<Double> = when (value) {
+            is ListValue -> value.items.mapIndexed { idx, v -> ev.expectNumber("$name coefficient[$idx]", v) }
+            is MatrixValue -> {
+                val matrix = value.matrix
+                if (matrix.numRows != 1 && matrix.numCols != 1) {
+                    throw runtimeError("$name expects coefficients as 1D list or vector")
+                }
+                val values = DoubleArray(matrix.numRows * matrix.numCols)
+                for (i in values.indices) {
+                    val r = i / matrix.numCols
+                    val c = i % matrix.numCols
+                    values[i] = matrix[r, c]
+                }
+                values.toList()
+            }
+            else -> throw runtimeError("$name expects coefficients as a list or vector")
+        }
+
+        fun algorithm(name: String, value: Value): MultiplicationAlgorithm {
+            val algoName = when (value) {
+                is StringValue -> value.value.lowercase()
+                else -> throw runtimeError("$name expects algorithm name as string")
+            }
+            return when (algoName) {
+                "sequential", "seq" -> MultiplicationAlgorithm.SEQUENTIAL
+                "parallel", "par", "async" -> MultiplicationAlgorithm.PARALLEL
+                "strassen", "fast" -> MultiplicationAlgorithm.STRASSEN
+                else -> throw runtimeError("Unknown algorithm '$algoName' for $name")
+            }
         }
 
         add("map", 2) { ev, args ->
@@ -53,6 +85,19 @@ object StdLib {
         add("identity", 1) { ev, args ->
             val size = ev.expectNumber("identity", args[0]).toInt()
             MatrixValue(MatrixFactory.identity(size))
+        }
+
+        add("poly", 2) { ev, args ->
+            val matrix = ev.expectMatrix("poly", args[0])
+            val coeffs = coefficients("poly", args[1], ev)
+            MatrixValue(matrix.polyEval(coeffs))
+        }
+
+        add("polyWith", 3) { ev, args ->
+            val matrix = ev.expectMatrix("polyWith", args[0])
+            val coeffs = coefficients("polyWith", args[1], ev)
+            val algo = algorithm("polyWith", args[2])
+            MatrixValue(matrix.polyEval(coeffs, algorithm = algo))
         }
 
         add("transpose", 1) { ev, args ->

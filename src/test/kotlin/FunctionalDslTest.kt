@@ -1,3 +1,4 @@
+import org.example.core.MatrixFactory
 import org.example.parser.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -86,5 +87,39 @@ class FunctionalDslTest {
             """.trimIndent()
         )
         assertEquals(15.0, (result as NumberValue).value)
+    }
+
+    @Test
+    fun `poly stdlib evaluates matrix polynomial`() {
+        val result = evalLast(
+            """
+            let a = [[1, 2], [3, 4]];
+            let coeff = [2, 3, 1];
+            poly(a, coeff);
+            """.trimIndent()
+        )
+        val matrix = (result as MatrixValue).matrix
+        val expected = MatrixFactory.create(
+            listOf(18.0, 26.0),
+            listOf(39.0, 57.0)
+        )
+        assertEquals(expected, matrix)
+    }
+
+    @Test
+    fun `polyWith lets choose algorithm`() {
+        val result = evalLast(
+            """
+            let a = [[1, 2], [3, 4]];
+            let coeff = [2, 3, 1];
+            polyWith(a, coeff, "sequential");
+            """.trimIndent()
+        )
+        val matrix = (result as MatrixValue).matrix
+        val expected = MatrixFactory.create(
+            listOf(18.0, 26.0),
+            listOf(39.0, 57.0)
+        )
+        assertEquals(expected, matrix)
     }
 }

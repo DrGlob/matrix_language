@@ -120,7 +120,7 @@ class BlockMatrix internal constructor(
                 }
                 rowOffset += blocks[br][0].numRows
             }
-
+            
             return Matrix.fromFlat(totalRows, totalCols, data, copy = false)
         }
     }
