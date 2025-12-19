@@ -3,7 +3,7 @@ package org.example.core
 /**
  * Вычисление матричного полинома P(A) по схеме Хорнера.
  *
- * mult — стратегия умножения (например, { a, b -> a.multiply(b, MultiplicationAlgorithm.SEQUENTIAL) }).
+ * mult — стратегия умножения (например, { a, b -> multiply(a, b, MatMulDefaults.default()) }).
  */
 fun evaluatePolynomial(
     coeffs: List<Double>,

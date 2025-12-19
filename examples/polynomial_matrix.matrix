@@ -1,0 +1,12 @@
+// Матричный полином 2*A^2 + 3*A + I с разными алгоритмами умножения
+
+let a = [[1, 2], [3, 4]];
+let coeff = [2, 3, 1];
+
+let fast = polyWith(a, coeff, "parallel");
+let seq = polyWith(a, coeff, "sequential");
+let strassen = polyWith(a, coeff, "strassen");
+
+print(fast);
+print(seq);
+print(strassen);

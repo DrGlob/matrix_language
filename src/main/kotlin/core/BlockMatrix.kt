@@ -50,25 +50,16 @@ class BlockMatrix internal constructor(
         return result.toBlocks(newBlockSize)
     }
 
-    fun multiply(
-        other: BlockMatrix,
-        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL,
-        blockSizeOverride: Int = blockSize,
-        parallelism: Int = Runtime.getRuntime().availableProcessors(),
-        strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD
-    ): BlockMatrix {
-        val result = source.multiply(
-            other.source,
-            algorithm = algorithm,
-            blockSize = blockSizeOverride,
-            parallelism = parallelism,
-            strassenThreshold = strassenThreshold
-        )
-        return result.toBlocks(blockSizeOverride)
+    fun multiply(other: BlockMatrix): BlockMatrix =
+        multiply(other, MatMulDefaults.default().copy(blockSize = blockSize))
+
+    fun multiply(other: BlockMatrix, config: MatMulConfig): BlockMatrix {
+        val result = multiply(source, other.source, config)
+        return result.toBlocks(config.blockSize)
     }
 
     companion object {
-        const val DEFAULT_BLOCK_SIZE = 128
+        const val DEFAULT_BLOCK_SIZE = MatMulDefaults.DEFAULT_BLOCK_SIZE
 
         /**
          * Сборка матрицы из сетки блоков.

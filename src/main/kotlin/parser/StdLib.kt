@@ -1,5 +1,6 @@
 package org.example.parser
 
+import org.example.core.MatMulDefaults
 import org.example.core.MatrixFactory
 import org.example.core.MultiplicationAlgorithm
 import kotlin.math.sqrt
@@ -97,7 +98,8 @@ object StdLib {
             val matrix = ev.expectMatrix("polyWith", args[0])
             val coeffs = coefficients("polyWith", args[1], ev)
             val algo = algorithm("polyWith", args[2])
-            MatrixValue(matrix.polyEval(coeffs, algorithm = algo))
+            val config = MatMulDefaults.default().copy(algorithm = algo)
+            MatrixValue(matrix.polyEval(coeffs, config = config))
         }
 
         add("transpose", 1) { ev, args ->

@@ -1,0 +1,25 @@
+// Функции высшего порядка, замыкания и композиция
+
+function makeAdder(delta) {
+    return { x -> x + delta };
+}
+
+let inc = makeAdder(1);
+let double = { x -> x * 2 };
+let incThenDouble = compose(double, inc); // f ∘ g = f(g(x)) => (x + 1) * 2
+
+let numbers = [1, 2, 3, 4, 5];
+
+// map с замыканием, затем filter и reduce
+let processed = filter(
+    numbers.map { incThenDouble(it) },
+    { x -> x > 6 }
+);
+let total = processed.reduce(0) { acc, x -> acc + x };
+
+print(processed);
+print(total);
+
+// Вызов function-выражения, возвращающего лямбду
+let triple = function(x) { return x * 3; };
+print(triple(4));

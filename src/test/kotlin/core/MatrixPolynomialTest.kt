@@ -2,6 +2,7 @@ package core
 
 import org.example.core.Matrix
 import org.example.core.MatrixFactory
+import org.example.core.MatMulDefaults
 import org.example.core.MultiplicationAlgorithm
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,12 +18,12 @@ class MatrixPolynomialTest {
         )
         val coefficients = listOf(2.0, 3.0, 1.0) // 2*A^2 + 3*A + I
 
-        val result = a.polyEval(
-            coefficients,
+        val config = MatMulDefaults.default().copy(
             algorithm = MultiplicationAlgorithm.PARALLEL,
             blockSize = 2,
             parallelism = 2
         )
+        val result = a.polyEval(coefficients, config = config)
 
         val expected = MatrixFactory.create(
             listOf(18.0, 26.0),

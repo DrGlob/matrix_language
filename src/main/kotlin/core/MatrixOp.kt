@@ -28,7 +28,7 @@ data class ExecutionMetrics(
 class MatrixMultiplicationOp(
     private val left: Matrix,
     private val right: Matrix,
-    private val algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL
+    private val config: MatMulConfig = MatMulDefaults.default()
 ) : MatrixComputation {
     override val rows: Int get() = left.numRows
     override val cols: Int get() = right.numCols
@@ -40,18 +40,18 @@ class MatrixMultiplicationOp(
         val result = if (logMetrics) {
             var produced: Matrix
             val duration = measureTimeMillis {
-                produced = left.multiply(right, algorithm = algorithm, logMetrics = false)
+                produced = multiply(left, right, config)
             }
             metrics = ExecutionMetrics(
                 rows = rows,
                 cols = cols,
-                algorithm = algorithm,
+                algorithm = config.algorithm,
                 durationMillis = duration,
                 costEstimate = costEstimate
             )
             produced
         } else {
-            left.multiply(right, algorithm = algorithm, logMetrics = false)
+            multiply(left, right, config)
         }
         return result to metrics
     }

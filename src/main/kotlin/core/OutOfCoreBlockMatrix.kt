@@ -54,7 +54,7 @@ class OutOfCoreBlockMatrix(
  */
 suspend fun OutOfCoreBlockMatrix.multiply(
     other: OutOfCoreBlockMatrix,
-    parallelism: Int = Runtime.getRuntime().availableProcessors(),
+    parallelism: Int = MatMulDefaults.default().parallelism,
     resultStorage: BlockStorage = InMemoryBlockStorage(),
     progress: ((doneBlocks: Long, totalBlocks: Long) -> Unit)? = null
 ): OutOfCoreBlockMatrix = coroutineScope {

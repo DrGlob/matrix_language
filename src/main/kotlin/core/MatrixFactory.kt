@@ -22,17 +22,11 @@ object MatrixFactory {
     fun polynomial(
         base: Matrix,
         coefficients: List<Double>,
-        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
-        blockSize: Int = BLOCK_SIZE,
-        parallelism: Int = Runtime.getRuntime().availableProcessors(),
-        strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD,
+        config: MatMulConfig = MatMulDefaults.default().copy(algorithm = MultiplicationAlgorithm.PARALLEL),
         logMetrics: Boolean = false
     ): Matrix = base.polyEval(
         coefficients,
-        algorithm = algorithm,
-        blockSize = blockSize,
-        parallelism = parallelism,
-        strassenThreshold = strassenThreshold,
+        config = config,
         logMetrics = logMetrics
     )
 }
@@ -45,17 +39,11 @@ fun identity(size: Int): Matrix = MatrixFactory.identity(size)
 fun polynomial(
     base: Matrix,
     coefficients: List<Double>,
-    algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
-    blockSize: Int = BLOCK_SIZE,
-    parallelism: Int = Runtime.getRuntime().availableProcessors(),
-    strassenThreshold: Int = Matrix.STRASSEN_THRESHOLD,
+    config: MatMulConfig = MatMulDefaults.default().copy(algorithm = MultiplicationAlgorithm.PARALLEL),
     logMetrics: Boolean = false
 ): Matrix = MatrixFactory.polynomial(
     base,
     coefficients,
-    algorithm,
-    blockSize,
-    parallelism,
-    strassenThreshold,
+    config,
     logMetrics
 )

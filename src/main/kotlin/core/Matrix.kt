@@ -5,7 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlin.math.max
+import kotlin.system.measureTimeMillis
 import org.example.utils.MatrixValidator
 
 enum class MultiplicationAlgorithm {
@@ -33,8 +33,7 @@ class Matrix private constructor(
     val numCols: Int get() = cols
 
     companion object {
-        private val DEFAULT_PARALLELISM = max(1, Runtime.getRuntime().availableProcessors())
-        const val STRASSEN_THRESHOLD = 64
+        const val STRASSEN_THRESHOLD = MatMulDefaults.DEFAULT_STRASSEN_THRESHOLD
 
         operator fun invoke(rows: List<List<Double>>): Matrix =
             fromFlat(rows.size, if (rows.isNotEmpty()) rows[0].size else 0, flatten(rows), copy = false)
@@ -128,7 +127,7 @@ class Matrix private constructor(
         return Matrix(result, rows, cols)
     }
 
-    override operator fun times(other: Matrix): Matrix = multiplySequential(other)
+    override operator fun times(other: Matrix): Matrix = multiply(this, other)
 
     override fun transpose(): Matrix {
         val result = DoubleArray(cols * rows)
@@ -140,48 +139,6 @@ class Matrix private constructor(
         return Matrix(result, cols, rows)
     }
 
-    /**
-     * Выбор алгоритма умножения (по умолчанию — блочное последовательное).
-     */
-    fun multiply(
-        other: Matrix,
-        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.SEQUENTIAL,
-        blockSize: Int = BLOCK_SIZE,
-        parallelism: Int = DEFAULT_PARALLELISM,
-        strassenThreshold: Int = STRASSEN_THRESHOLD,
-        logMetrics: Boolean = false
-    ): Matrix {
-        val rowsA = numRows
-        val colsB = other.numCols
-        val inner = numCols
-
-        val (result, duration) = kotlin.run {
-            if (!logMetrics) {
-                return@run when (algorithm) {
-                    MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
-                    MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
-                    MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
-                } to -1L
-            }
-            var produced: Matrix
-            val elapsed = kotlin.system.measureTimeMillis {
-                produced = when (algorithm) {
-                    MultiplicationAlgorithm.SEQUENTIAL -> multiplySequential(other, blockSize)
-                    MultiplicationAlgorithm.PARALLEL -> runBlockingParallel(other, blockSize, parallelism)
-                    MultiplicationAlgorithm.STRASSEN -> multiplyStrassen(other, strassenThreshold)
-                }
-            }
-            produced to elapsed
-        }
-
-        if (logMetrics) {
-            println(
-                "Matrix multiply: ${rowsA}x${inner} * ${other.numRows}x${colsB} " +
-                        "algo=$algorithm time=${duration}ms cost≈${rowsA * colsB * inner}"
-            )
-        }
-        return result
-    }
 
     /**
      * Масштабирование матрицы скаляром (alias для операторной версии).
@@ -198,10 +155,7 @@ class Matrix private constructor(
      */
     fun polyEval(
         coefficients: List<Double>,
-        algorithm: MultiplicationAlgorithm = MultiplicationAlgorithm.PARALLEL,
-        blockSize: Int = BLOCK_SIZE,
-        parallelism: Int = DEFAULT_PARALLELISM,
-        strassenThreshold: Int = STRASSEN_THRESHOLD,
+        config: MatMulConfig = MatMulDefaults.default().copy(algorithm = MultiplicationAlgorithm.PARALLEL),
         logMetrics: Boolean = false
     ): Matrix {
         require(coefficients.isNotEmpty()) { "Polynomial coefficients must not be empty" }
@@ -211,14 +165,7 @@ class Matrix private constructor(
         var acc = id * coefficients[0]
         var idx = 1
         while (idx < coefficients.size) {
-            acc = acc.multiply(
-                this,
-                algorithm = algorithm,
-                blockSize = blockSize,
-                parallelism = parallelism,
-                strassenThreshold = strassenThreshold,
-                logMetrics = logMetrics
-            )
+            acc = multiplyWithMetrics(acc, this, config, logMetrics)
             val coeff = coefficients[idx]
             if (coeff != 0.0) {
                 acc = acc + id * coeff
@@ -274,7 +221,7 @@ class Matrix private constructor(
     suspend fun multiplyParallel(
         other: Matrix,
         blockSize: Int = BLOCK_SIZE,
-        parallelism: Int = DEFAULT_PARALLELISM
+        parallelism: Int = MatMulDefaults.default().parallelism
     ): Matrix = coroutineScope {
         MatrixValidator.validateDimensionsForMultiplication(this@Matrix, other)
         val aBlocks = this@Matrix.toBlocks(blockSize)
@@ -355,11 +302,6 @@ class Matrix private constructor(
             resultPadded.trim(originalSize, other.numCols)
         }
     }
-
-    private fun runBlockingParallel(other: Matrix, blockSize: Int, parallelism: Int): Matrix =
-        kotlinx.coroutines.runBlocking {
-            multiplyParallel(other, blockSize, parallelism)
-        }
 
     private fun pad(targetRows: Int, targetCols: Int): Matrix =
         fromInitializer(targetRows, targetCols) { r, c ->
@@ -455,4 +397,28 @@ class Matrix private constructor(
             (0 until cols).joinToString(" ") { c -> data[r * cols + c].toString() }
         }
     }
+}
+
+private fun multiplyWithMetrics(
+    left: Matrix,
+    right: Matrix,
+    config: MatMulConfig,
+    logMetrics: Boolean
+): Matrix {
+    if (!logMetrics) {
+        return multiply(left, right, config)
+    }
+
+    val rowsA = left.numRows
+    val colsB = right.numCols
+    val inner = left.numCols
+    lateinit var produced: Matrix
+    val duration = measureTimeMillis {
+        produced = multiply(left, right, config)
+    }
+    println(
+        "Matrix multiply: ${rowsA}x${inner} * ${right.numRows}x${colsB} " +
+            "algo=${config.algorithm} time=${duration}ms cost≈${rowsA * colsB * inner}"
+    )
+    return produced
 }
