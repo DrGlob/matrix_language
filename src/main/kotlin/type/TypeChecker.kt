@@ -175,24 +175,10 @@ private fun inferMap(args: List<Expr>, env: TypeEnv): Type {
     val fnExpr = args.getOrNull(1) ?: throw runtimeError("type error: map expects lambda")
     val targetType = infer(target, env, null)
 
-    return when (targetType) {
-        MatrixType -> {
-            val fnType = inferFunctionForMap(fnExpr, env, NumberType)
-            if (fnType.returnType != NumberType) {
-                throw typeError(NumberType, fnType.returnType, token = null)
-            }
-            MatrixType
-        }
-        is ListType -> {
-            val fnType = inferFunctionForMap(fnExpr, env, targetType.elementType)
-            ListType(fnType.returnType)
-        }
-        else -> throw typeError(
-            expected = "Matrix or List",
-            actual = targetType,
-            token = dummyToken("map")
-        )
-    }
+    val listType = targetType as? ListType
+        ?: throw typeError(expected = "List", actual = targetType, token = dummyToken("map"))
+    val fnType = inferFunctionForMap(fnExpr, env, listType.elementType)
+    return ListType(fnType.returnType)
 }
 
 private fun inferReduce(args: List<Expr>, env: TypeEnv): Type {
@@ -201,11 +187,9 @@ private fun inferReduce(args: List<Expr>, env: TypeEnv): Type {
     val fnExpr = args.getOrNull(2) ?: throw runtimeError("type error: reduce expects lambda")
 
     val targetType = infer(target, env, null)
-    val elementType = when (targetType) {
-        MatrixType -> NumberType
-        is ListType -> targetType.elementType
-        else -> throw typeError("Matrix or List", targetType, dummyToken("reduce"))
-    }
+    val listType = targetType as? ListType
+        ?: throw typeError("List", targetType, dummyToken("reduce"))
+    val elementType = listType.elementType
 
     val accType = infer(initExpr, env, null)
     val fnType = inferFunctionForReduce(fnExpr, env, accType, elementType)
@@ -221,18 +205,12 @@ private fun inferZip(args: List<Expr>, env: TypeEnv): Type {
     val leftType = infer(leftExpr, env, null)
     val rightType = infer(rightExpr, env, null)
 
-    val leftElem = when (leftType) {
-        MatrixType -> NumberType
-        is ListType -> leftType.elementType
-        else -> throw typeError("Matrix or List", leftType, dummyToken("zip"))
-    }
-    val rightElem = when (rightType) {
-        MatrixType -> NumberType
-        is ListType -> rightType.elementType
-        else -> throw typeError("Matrix or List", rightType, dummyToken("zip"))
-    }
+    val leftList = leftType as? ListType
+        ?: throw typeError("List", leftType, dummyToken("zip"))
+    val rightList = rightType as? ListType
+        ?: throw typeError("List", rightType, dummyToken("zip"))
 
-    return ListType(PairType(leftElem, rightElem))
+    return ListType(PairType(leftList.elementType, rightList.elementType))
 }
 
 private fun inferUnzip(args: List<Expr>, env: TypeEnv): Type {
@@ -251,8 +229,14 @@ private fun inferFunctionForMap(expr: Expr, env: TypeEnv, paramType: Type): Func
         else -> {
             val type = infer(expr, env, null)
             val fn = type as? FunctionType ?: throw typeError("Function", type, token = null)
-            if (fn.paramTypes.size != 1 || fn.paramTypes.first() != paramType) {
-                throw typeError(paramType, fn.paramTypes.firstOrNull() ?: UnitType, token = null)
+            if (fn.paramTypes.size != 1) {
+                throw runtimeError(
+                    "type error: expected function with 1 parameter of type ${typeName(paramType)}, got ${typeName(type)}",
+                    token = null
+                )
+            }
+            if (fn.paramTypes.first() != paramType) {
+                throw typeError(paramType, fn.paramTypes.first(), token = null)
             }
             fn
         }
@@ -265,13 +249,15 @@ private fun inferFunctionForReduce(expr: Expr, env: TypeEnv, accType: Type, elem
         else -> {
             val type = infer(expr, env, null)
             val fn = type as? FunctionType ?: throw typeError("Function", type, token = null)
-            if (fn.paramTypes.size != 2 ||
-                fn.paramTypes[0] != accType ||
-                fn.paramTypes[1] != elemType
-            ) {
-                throw typeError(
-                    expected = "(${typeName(accType)}, ${typeName(elemType)})",
-                    actual = FunctionType(fn.paramTypes, fn.returnType),
+            if (fn.paramTypes.size != 2) {
+                throw runtimeError(
+                    "type error: expected function with 2 parameters (${typeName(accType)}, ${typeName(elemType)}), got ${typeName(type)}",
+                    token = null
+                )
+            }
+            if (fn.paramTypes[0] != accType || fn.paramTypes[1] != elemType) {
+                throw runtimeError(
+                    "type error: expected function (${typeName(accType)}, ${typeName(elemType)}), got ${typeName(type)}",
                     token = null
                 )
             }
@@ -314,7 +300,7 @@ private fun typeName(type: Type): String = when (type) {
     MatrixType -> "Matrix"
     is ListType -> "List<${typeName(type.elementType)}>"
     is PairType -> "Pair<${typeName(type.first)}, ${typeName(type.second)}>"
-    is FunctionType -> "Function"
+    is FunctionType -> "(${type.paramTypes.joinToString(", ") { typeName(it) }}) -> ${typeName(type.returnType)}"
     UnitType -> "Unit"
     else -> "Unknown"
 }
