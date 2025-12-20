@@ -1,5 +1,10 @@
 package org.example.parser
 
+/**
+ * Рекурсивный спускающийся парсер для .matrix языка.
+ *
+ * Строит список [Stmt] из потока [Token].
+ */
 class Parser(private val tokens: List<Token>) {
     private var current = 0
 

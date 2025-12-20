@@ -1,7 +1,8 @@
 package org.example.parser
 
-// Типы токенов
-
+/**
+ * Типы токенов для лексера и парсера.
+ */
 enum class TokenType {
     // Литералы
     NUMBER, STRING, IDENTIFIER,
@@ -31,7 +32,9 @@ enum class TokenType {
     EOF
 }
 
-// Токен
+/**
+ * Лексический токен с позиционной информацией.
+ */
 data class Token(
     val type: TokenType,
     val lexeme: String,
@@ -40,7 +43,9 @@ data class Token(
     val column: Int
 )
 
-// Узлы AST
+/**
+ * Узлы AST для выражений (expression-level).
+ */
 sealed class Expr {
     data class MatrixLiteral(val rows: List<List<Double>>) : Expr()
     data class NumberLiteral(val value: Double) : Expr()
@@ -58,6 +63,9 @@ sealed class Expr {
     data class Function(val name: String, val params: List<String>, val body: Stmt) : Expr()
 }
 
+/**
+ * Узлы AST для операторов/statement-level конструкций.
+ */
 sealed class Stmt {
     data class Expression(val expression: Expr) : Stmt()
     data class Print(val expression: Expr) : Stmt()

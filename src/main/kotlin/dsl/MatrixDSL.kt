@@ -5,6 +5,13 @@ import org.example.core.MatMulDefaults
 import org.example.core.Matrix
 import org.example.core.MultiplicationAlgorithm
 
+/**
+ * Kotlin-DSL фасад для сборки матричных вычислений поверх [Matrix].
+ *
+ * Предоставляет простые операции над контекстом (declare/get),
+ * функциональные конструкции (ifThen/loop/foldRange/mapRange)
+ * и вычисление матричных полиномов через [poly].
+ */
 class MatrixDSL {
     private val context = MatrixContext()
     private val controlFlow = ControlFlow(context)
@@ -63,6 +70,9 @@ class MatrixDSL {
 }
 
 // Top-level DSL builder
+/**
+ * Входная точка DSL: выполняет блок в контексте [MatrixDSL].
+ */
 fun matrixComputation(block: MatrixDSL.() -> Matrix): Matrix {
     val dsl = MatrixDSL()
     return dsl.compute(block)

@@ -1,5 +1,10 @@
 package org.example.parser
 
+/**
+ * Иммутабельное лексическое окружение значений [Value].
+ *
+ * define возвращает новое окружение, get ищет по цепочке parent.
+ */
 data class Environment(
     private val values: Map<String, Value> = emptyMap(),
     private val parent: Environment? = null

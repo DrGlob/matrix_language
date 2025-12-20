@@ -1,5 +1,8 @@
 package org.example.parser
 
+/**
+ * Лексер для .matrix языка: превращает исходный текст в поток [Token].
+ */
 class Lexer(private val source: String) {
     private val tokens = mutableListOf<Token>()
     private var start = 0

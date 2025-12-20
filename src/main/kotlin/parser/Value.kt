@@ -2,6 +2,12 @@ package org.example.parser
 
 import org.example.core.Matrix
 
+/**
+ * Runtime-значения интерпретатора.
+ *
+ * Включает числа, матрицы, списки, пары, строки, булевы,
+ * а также функции/лямбды (через [CallableValue]).
+ */
 sealed interface Value
 
 data class NumberValue(val value: Double) : Value
@@ -12,6 +18,9 @@ data class StringValue(val value: String) : Value
 data class BoolValue(val value: Boolean) : Value
 
 // Функции/лямбды
+/**
+ * Вызываемое значение (лямбда или встроенная функция).
+ */
 interface CallableValue : Value {
     fun arity(): Int
     fun call(evaluator: Evaluator, arguments: List<Value>): Value

@@ -2,6 +2,12 @@ package org.example.parser
 
 class ReturnException(val value: Value) : RuntimeException("Return statement")
 
+/**
+ * Интерпретатор statement-level конструкций.
+ *
+ * Хранит глобальное окружение, устанавливает StdLib и делегирует
+ * вычисление выражений в [Evaluator].
+ */
 class Interpreter {
     internal var globals = Environment()
     internal var environment: Environment = globals

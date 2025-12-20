@@ -2,6 +2,9 @@ package org.example.parser
 
 import org.example.core.Matrix
 
+/**
+ * Вычислитель выражений AST в значения [Value].
+ */
 class Evaluator(val interpreter: Interpreter) {
     fun eval(expr: Expr, env: Environment): Value {
         return when (expr) {

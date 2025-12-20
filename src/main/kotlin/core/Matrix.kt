@@ -45,7 +45,17 @@ interface MatrixOperations {
     fun transpose(): Matrix
 }
 
-// Иммутабельная матрица с плоским хранением (row-major)
+/**
+ * Иммутабельная матрица Double с плоским row-major хранением.
+ *
+ * Основные операции:
+ * - плюс/минус (поэлементно),
+ * - умножение на скаляр,
+ * - умножение матриц через [multiply] и [MatMulConfig],
+ * - transpose, polyEval (схема Горнера).
+ *
+ * Создание: [Matrix.invoke], [fromInitializer], [zeros], [identity], [fromFlat].
+ */
 class Matrix private constructor(
     internal val data: DoubleArray,
     val rows: Int,

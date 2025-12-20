@@ -1,5 +1,11 @@
 package org.example.dsl
 
+/**
+ * Функциональные конструкции управления потоком для DSL.
+ *
+ * Реализует expression-style if, хвостовую рекурсию для loop,
+ * а также fold/map по диапазону.
+ */
 class ControlFlow(private val context: MatrixContext) {
     // Functional if-else as an expression
     fun <T> ifThen(

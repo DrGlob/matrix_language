@@ -2,6 +2,9 @@ package org.example.type
 
 import org.example.parser.runtimeError
 
+/**
+ * Типы DSL для статической проверки.
+ */
 sealed interface Type
 
 object NumberType : Type
@@ -16,6 +19,9 @@ data class FunctionType(
 ) : Type
 object UnitType : Type
 
+/**
+ * Иммутабельное окружение типов (lexical scope).
+ */
 class TypeEnv(
     private val bindings: Map<String, Type> = emptyMap(),
     private val parent: TypeEnv? = null

@@ -2,6 +2,11 @@ package org.example.dsl
 
 import org.example.core.Matrix
 
+/**
+ * Хранилище именованных матриц для DSL.
+ *
+ * Используется внутри [MatrixDSL] для объявления и получения значений.
+ */
 class MatrixContext {
     private val variables: MutableMap<String, Matrix> = mutableMapOf()
 

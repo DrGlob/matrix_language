@@ -8,6 +8,11 @@ private object Ids {
     fun next(prefix: String) = "${prefix}_${counter++}"
 }
 
+/**
+ * Узел графа вычислений для планировщика.
+ *
+ * Представляет высокоуровневые операции над AST и хранит оценку стоимости.
+ */
 sealed class GraphNode(
     open val id: String,
     open val inputs: List<GraphNode>,
@@ -68,6 +73,9 @@ sealed class GraphNode(
     ) : GraphNode(id, inputs, costEstimate = meta.defaultCost(50.0), meta = meta)
 }
 
+/**
+ * Метаданные узла (размеры/длины) для оценки стоимости.
+ */
 data class NodeMeta(
     val rows: Int? = null,
     val cols: Int? = null,
@@ -87,12 +95,18 @@ data class NodeMeta(
     }
 }
 
+/**
+ * Результат планирования: корень графа, все узлы и предупреждения.
+ */
 data class Plan(
     val root: GraphNode,
     val nodes: Set<GraphNode>,
     val warnings: List<String>
 )
 
+/**
+ * Строит граф вычислений из AST.
+ */
 class Planner {
     private val warnings = mutableListOf<String>()
     private val nodes = mutableSetOf<GraphNode>()
