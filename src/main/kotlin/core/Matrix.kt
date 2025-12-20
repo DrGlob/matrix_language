@@ -8,9 +8,22 @@ import kotlinx.coroutines.sync.withPermit
 import kotlin.system.measureTimeMillis
 import org.example.utils.MatrixValidator
 
+/**
+ * Алгоритмы умножения матриц и их свойства.
+ *
+ * SEQUENTIAL — блочное умножение O(n^3) с хорошей локальностью кэша.
+ * PARALLEL — то же блочное умножение, но с распараллеливанием по блокам;
+ *            асимптотика такая же, эффективность зависит от размеров и parallelism.
+ * STRASSEN — алгоритм Штрассена с асимптотикой ~O(n^log2(7));
+ *            работает только для квадратных матриц одинакового размера,
+ *            внутри использует порог strassenThreshold для перехода на SEQUENTIAL.
+ */
 enum class MultiplicationAlgorithm {
+    /** Блочное последовательное умножение (классическая O(n^3)). */
     SEQUENTIAL,
+    /** Параллельное блочное умножение (те же операции, меньше wall-time при больших матрицах). */
     PARALLEL,
+    /** Strassen для квадратных матриц; паддинг до степени 2 и пороговый переход на SEQUENTIAL. */
     STRASSEN
 }
 
@@ -18,6 +31,16 @@ interface MatrixOperations {
     operator fun plus(other: Matrix): Matrix
     operator fun minus(other: Matrix): Matrix
     operator fun times(scalar: Double): Matrix
+
+    /**
+     * Умножение матриц.
+     *
+     * Иммутабельность: входные матрицы не изменяются.
+     *
+     * Исключения:
+     * - [IllegalArgumentException] при несовместимых размерах.
+     * - [IllegalArgumentException] для алгоритмов с доп. ограничениями (например, STRASSEN).
+     */
     operator fun times(other: Matrix): Matrix
     fun transpose(): Matrix
 }
@@ -127,6 +150,11 @@ class Matrix private constructor(
         return Matrix(result, rows, cols)
     }
 
+    /**
+     * Умножение матриц через единую точку входа [multiply] и [MatMulDefaults.default].
+     *
+     * Иммутабельность: входные матрицы не изменяются.
+     */
     override operator fun times(other: Matrix): Matrix = multiply(this, other)
 
     override fun transpose(): Matrix {

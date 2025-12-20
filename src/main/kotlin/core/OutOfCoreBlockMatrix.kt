@@ -50,7 +50,14 @@ class OutOfCoreBlockMatrix(
 )
 
 /**
- * Блочное умножение, работа с блоками через BlockStorage.
+ * Блочное умножение, работа с блоками через [BlockStorage].
+ *
+ * Алгоритм имеет сложность O(m * n * k) по числу умножений, но работает потоково
+ * и не требует полной материализации матриц в памяти. Эффективность зависит от
+ * размера блоков, скорости хранилища и параметра [parallelism].
+ *
+ * Иммутабельность: входные матрицы не изменяются.
+ * @throws IllegalArgumentException при несовместимых размерах.
  */
 suspend fun OutOfCoreBlockMatrix.multiply(
     other: OutOfCoreBlockMatrix,
