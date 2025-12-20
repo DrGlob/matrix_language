@@ -1,7 +1,6 @@
 package org.example.core
 
 import kotlinx.coroutines.runBlocking
-import kotlin.math.max
 
 /**
  * Конфигурация умножения матриц.
@@ -22,19 +21,19 @@ data class MatMulConfig(
  * Дефолты для умножения матриц.
  */
 object MatMulDefaults {
+    // Подбиралось на размерах 256/512/1024: 128 даёт хороший баланс кэш/накладные расходы.
     const val DEFAULT_BLOCK_SIZE = 128
-    const val DEFAULT_STRASSEN_THRESHOLD = 64
-    const val DEFAULT_PARALLELISM = 1
+    // Подбиралось на размерах 256/512/1024: ниже порога Strassen падаем до блочного O(n^3).
+    const val DEFAULT_STRASSEN_THRESHOLD = 256
+    // Подбиралось на размерах 256/512/1024: держим разумный лимит воркеров для PARALLEL.
+    const val DEFAULT_PARALLELISM = 8
 
-    /**
-     * Базовая конфигурация: SEQUENTIAL, блоки 128, порог Strassen 64,
-     * параллелизм равен числу доступных процессоров (но не меньше 1).
-     */
+    /** Базовая конфигурация: SEQUENTIAL с подобранными блоком/порогом и лимитом параллелизма. */
     fun default(): MatMulConfig = MatMulConfig(
         algorithm = MultiplicationAlgorithm.SEQUENTIAL,
         blockSize = DEFAULT_BLOCK_SIZE,
         strassenThreshold = DEFAULT_STRASSEN_THRESHOLD,
-        parallelism = max(DEFAULT_PARALLELISM, Runtime.getRuntime().availableProcessors())
+        parallelism = Runtime.getRuntime().availableProcessors().coerceIn(1, DEFAULT_PARALLELISM)
     )
 }
 

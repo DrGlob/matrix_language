@@ -1,5 +1,6 @@
 package org.example
 
+import advanced.MatMulBenchmark
 import cli.FileRunner
 import org.example.core.*
 import org.example.dsl.matrixComputation
@@ -11,8 +12,9 @@ import org.example.utils.toFormattedString
 
 fun main(args: Array<String>) {
     when {
+        args.size == 1 && args[0] == "--benchmark-matmul" -> MatMulBenchmark.run()
         args.size > 1 -> {
-            println("Usage: matrix-dsl [script]")
+            println("Usage: matrix-dsl [--benchmark-matmul|script]")
             kotlin.system.exitProcess(64)
         }
         args.size == 1 -> {
