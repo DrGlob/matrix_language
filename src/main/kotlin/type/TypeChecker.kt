@@ -170,15 +170,32 @@ private fun inferMethodCall(expr: Expr.MethodCallExpr, env: TypeEnv): Type {
     }
 }
 
+private fun collectionElementType(type: Type, opName: String): Type = when (type) {
+    is ListType -> type.elementType
+    MatrixType -> NumberType
+    VectorType -> NumberType
+    else -> throw typeError("List, Vector or Matrix", type, dummyToken(opName))
+}
+
 private fun inferMap(args: List<Expr>, env: TypeEnv): Type {
     val target = args.getOrNull(0) ?: throw runtimeError("type error: map expects target")
     val fnExpr = args.getOrNull(1) ?: throw runtimeError("type error: map expects lambda")
     val targetType = infer(target, env, null)
 
-    val listType = targetType as? ListType
-        ?: throw typeError(expected = "List", actual = targetType, token = dummyToken("map"))
-    val fnType = inferFunctionForMap(fnExpr, env, listType.elementType)
-    return ListType(fnType.returnType)
+    val elemType = collectionElementType(targetType, "map")
+    val fnType = inferFunctionForMap(fnExpr, env, elemType)
+    return when (targetType) {
+        is ListType -> ListType(fnType.returnType)
+        VectorType -> {
+            if (fnType.returnType != NumberType) throw typeError(NumberType, fnType.returnType, token = null)
+            VectorType
+        }
+        MatrixType -> {
+            if (fnType.returnType != NumberType) throw typeError(NumberType, fnType.returnType, token = null)
+            MatrixType
+        }
+        else -> throw typeError("List, Vector or Matrix", targetType, dummyToken("map"))
+    }
 }
 
 private fun inferReduce(args: List<Expr>, env: TypeEnv): Type {
@@ -187,16 +204,27 @@ private fun inferReduce(args: List<Expr>, env: TypeEnv): Type {
     val fnExpr = args.getOrNull(2) ?: throw runtimeError("type error: reduce expects lambda")
 
     val targetType = infer(target, env, null)
-    val listType = targetType as? ListType
-        ?: throw typeError("List", targetType, dummyToken("reduce"))
-    val elementType = listType.elementType
+    val elementType = collectionElementType(targetType, "reduce")
 
     val accType = infer(initExpr, env, null)
-    val fnType = inferFunctionForReduce(fnExpr, env, accType, elementType)
-    if (fnType.returnType != accType) {
-        throw typeError(accType, fnType.returnType, token = null)
+    return when (targetType) {
+        is ListType -> {
+            val fnType = inferFunctionForReduce(fnExpr, env, accType, elementType)
+            if (fnType.returnType != accType) {
+                throw typeError(accType, fnType.returnType, token = null)
+            }
+            accType
+        }
+        VectorType, MatrixType -> {
+            if (accType != NumberType) throw typeError(NumberType, accType, token = null)
+            val fnType = inferFunctionForReduce(fnExpr, env, NumberType, elementType)
+            if (fnType.returnType != NumberType) {
+                throw typeError(NumberType, fnType.returnType, token = null)
+            }
+            NumberType
+        }
+        else -> throw typeError("List, Vector or Matrix", targetType, dummyToken("reduce"))
     }
-    return accType
 }
 
 private fun inferZip(args: List<Expr>, env: TypeEnv): Type {
@@ -205,12 +233,10 @@ private fun inferZip(args: List<Expr>, env: TypeEnv): Type {
     val leftType = infer(leftExpr, env, null)
     val rightType = infer(rightExpr, env, null)
 
-    val leftList = leftType as? ListType
-        ?: throw typeError("List", leftType, dummyToken("zip"))
-    val rightList = rightType as? ListType
-        ?: throw typeError("List", rightType, dummyToken("zip"))
+    val leftElem = collectionElementType(leftType, "zip")
+    val rightElem = collectionElementType(rightType, "zip")
 
-    return ListType(PairType(leftList.elementType, rightList.elementType))
+    return ListType(PairType(leftElem, rightElem))
 }
 
 private fun inferUnzip(args: List<Expr>, env: TypeEnv): Type {
@@ -218,7 +244,11 @@ private fun inferUnzip(args: List<Expr>, env: TypeEnv): Type {
     val inputType = infer(inputExpr, env, null)
     if (inputType is ListType && inputType.elementType is PairType) {
         val pairType = inputType.elementType
-        return PairType(ListType(pairType.first), ListType(pairType.second))
+        return if (pairType.first == NumberType && pairType.second == NumberType) {
+            PairType(VectorType, VectorType)
+        } else {
+            PairType(ListType(pairType.first), ListType(pairType.second))
+        }
     }
     throw typeError("List<Pair<..>>", inputType, dummyToken("unzip"))
 }
@@ -283,6 +313,10 @@ private fun inferProperty(expr: Expr.PropertyAccess, env: TypeEnv): Type {
             "size" -> NumberType
             else -> throw typeError("List property", receiverType, token = null)
         }
+        VectorType -> when (expr.name) {
+            "size" -> NumberType
+            else -> throw typeError("Vector property", receiverType, token = null)
+        }
         else -> throw typeError("Property access", receiverType, token = null)
     }
 }
@@ -298,6 +332,7 @@ private fun typeName(type: Type): String = when (type) {
     BoolType -> "Bool"
     StringType -> "String"
     MatrixType -> "Matrix"
+    VectorType -> "Vector"
     is ListType -> "List<${typeName(type.elementType)}>"
     is PairType -> "Pair<${typeName(type.first)}, ${typeName(type.second)}>"
     is FunctionType -> "(${type.paramTypes.joinToString(", ") { typeName(it) }}) -> ${typeName(type.returnType)}"

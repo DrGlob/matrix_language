@@ -28,7 +28,8 @@ object StdLib {
                 }
                 values.toList()
             }
-            else -> throw runtimeError("$name expects coefficients as a list or vector")
+            is VectorValue -> value.vector.toList()
+            else -> throw runtimeError("$name expects coefficients as a list, vector or 1D matrix")
         }
 
         fun algorithm(name: String, value: Value): MultiplicationAlgorithm {
@@ -60,6 +61,10 @@ object StdLib {
         add("filter", 2) { ev, args ->
             val predicate = ev.expectCallable("filter", args[1])
             ev.applyFilter(args[0], predicate)
+        }
+
+        add("vector", 1) { ev, args ->
+            VectorValue(ev.expectVector("vector", args[0]))
         }
 
         add("compose", 2) { ev, args ->

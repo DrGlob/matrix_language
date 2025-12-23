@@ -1,6 +1,7 @@
 package org.example.parser
 
 import org.example.core.Matrix
+import org.example.core.Vector
 
 /**
  * Вычислитель выражений AST в значения [Value].
@@ -170,6 +171,13 @@ class Evaluator(val interpreter: Interpreter) {
                     Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
                 )
             }
+            is VectorValue -> when (expr.name) {
+                "size" -> NumberValue(obj.vector.size.toDouble())
+                else -> throw runtimeError(
+                    "Undefined property '${expr.name}' on vector",
+                    Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
+                )
+            }
             else -> {
                 val dummyToken = Token(TokenType.IDENTIFIER, expr.name, null, 0, 0)
                 throw runtimeError("Undefined property '${expr.name}'", dummyToken)
@@ -198,6 +206,21 @@ class Evaluator(val interpreter: Interpreter) {
         )
     }
 
+    fun expectVector(name: String, value: Value): Vector {
+        return when (value) {
+            is VectorValue -> value.vector
+            is MatrixValue -> Vector.fromMatrix(value.matrix)
+            is ListValue -> {
+                val doubles = value.items.mapIndexed { idx, v -> expectNumber("$name[$idx]", v) }
+                Vector.fromList(doubles)
+            }
+            else -> throw runtimeError(
+                "Expected vector value",
+                Token(TokenType.IDENTIFIER, name, null, 0, 0)
+            )
+        }
+    }
+
     fun applyMap(target: Value, function: CallableValue): Value {
         if (function.arity() != 1) {
             throw runtimeError(
@@ -219,9 +242,19 @@ class Evaluator(val interpreter: Interpreter) {
                     }
                 )
             }
+            is VectorValue -> {
+                val mapped = target.vector.map { value ->
+                    val result = function.call(this, listOf(NumberValue(value)))
+                    (result as? NumberValue)?.value ?: throw runtimeError(
+                        "Vector map expects lambda to return number",
+                        Token(TokenType.IDENTIFIER, "map", null, 0, 0)
+                    )
+                }
+                VectorValue(mapped)
+            }
             is ListValue -> ListValue(target.items.map { function.call(this, listOf(it)) })
             else -> throw runtimeError(
-                "Can only map over matrices or lists",
+                "Can only map over matrices, vectors or lists",
                 Token(TokenType.IDENTIFIER, "map", null, 0, 0)
             )
         }
@@ -233,6 +266,21 @@ class Evaluator(val interpreter: Interpreter) {
                 "Expected function with 2 parameters for 'reduce'",
                 Token(TokenType.IDENTIFIER, "reduce", null, 0, 0)
             )
+        }
+        if (target is VectorValue) {
+            var acc = expectNumber("reduce", initial)
+            val vector = target.vector
+            for (idx in 0 until vector.size) {
+                val result = function.call(
+                    this,
+                    listOf(NumberValue(acc), NumberValue(vector[idx]))
+                )
+                acc = (result as? NumberValue)?.value ?: throw runtimeError(
+                    "Vector reduce expects lambda to return number",
+                    Token(TokenType.IDENTIFIER, "reduce", null, 0, 0)
+                )
+            }
+            return NumberValue(acc)
         }
         val items = flattenCollection(target, "reduce")
         var accumulator = initial
@@ -294,6 +342,7 @@ class Evaluator(val interpreter: Interpreter) {
 
         val first = mutableListOf<Value>()
         val second = mutableListOf<Value>()
+        var allNumeric = true
         for (pair in pairs) {
             if (pair !is PairValue) {
                 throw runtimeError(
@@ -303,6 +352,12 @@ class Evaluator(val interpreter: Interpreter) {
             }
             first.add(pair.first)
             second.add(pair.second)
+            allNumeric = allNumeric && pair.first is NumberValue && pair.second is NumberValue
+        }
+        if (allNumeric) {
+            val leftVector = VectorValue(Vector.fromList(first.map { (it as NumberValue).value }))
+            val rightVector = VectorValue(Vector.fromList(second.map { (it as NumberValue).value }))
+            return PairValue(leftVector, rightVector)
         }
         return PairValue(ListValue(first), ListValue(second))
     }
@@ -319,9 +374,10 @@ class Evaluator(val interpreter: Interpreter) {
                 }
                 list
             }
+            is VectorValue -> target.vector.toList().map { NumberValue(it) }
             is ListValue -> target.items
             else -> throw runtimeError(
-                "$opName expects a matrix or a list",
+                "$opName expects a matrix, a vector or a list",
                 Token(TokenType.IDENTIFIER, opName, null, 0, 0)
             )
         }
@@ -343,6 +399,7 @@ class Evaluator(val interpreter: Interpreter) {
             a is BoolValue && b is BoolValue -> a.value == b.value
             a is ListValue && b is ListValue -> a.items == b.items
             a is PairValue && b is PairValue -> isEqual(a.first, b.first) && isEqual(a.second, b.second)
+            a is VectorValue && b is VectorValue -> a.vector == b.vector
             else -> false
         }
     }
@@ -369,6 +426,14 @@ class Evaluator(val interpreter: Interpreter) {
                     }
                 } else {
                     "Matrix(${matrix.numRows}x${matrix.numCols})"
+                }
+            }
+            is VectorValue -> {
+                val entries = value.vector.toList()
+                if (entries.size <= 8) {
+                    entries.joinToString(prefix = "[", postfix = "]") { "%.2f".format(it) }
+                } else {
+                    "Vector(size=${entries.size})"
                 }
             }
             is CallableValue -> value.toString()

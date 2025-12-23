@@ -11,6 +11,7 @@ object NumberType : Type
 object BoolType : Type
 object StringType : Type
 object MatrixType : Type
+object VectorType : Type
 data class ListType(val elementType: Type) : Type
 data class PairType(val first: Type, val second: Type) : Type
 data class FunctionType(

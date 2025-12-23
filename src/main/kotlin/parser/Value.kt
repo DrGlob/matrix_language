@@ -1,6 +1,7 @@
 package org.example.parser
 
 import org.example.core.Matrix
+import org.example.core.Vector
 
 /**
  * Runtime-значения интерпретатора.
@@ -12,6 +13,7 @@ sealed interface Value
 
 data class NumberValue(val value: Double) : Value
 data class MatrixValue(val matrix: Matrix) : Value
+data class VectorValue(val vector: Vector) : Value
 data class ListValue(val items: List<Value>) : Value
 data class PairValue(val first: Value, val second: Value) : Value
 data class StringValue(val value: String) : Value

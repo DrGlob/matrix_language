@@ -7,6 +7,7 @@ import org.example.type.ListType
 import org.example.type.NumberType
 import org.example.type.PairType
 import org.example.type.StringType
+import org.example.type.VectorType
 import org.example.type.TypeEnv
 import org.example.type.inferType
 import kotlin.test.Test
@@ -33,12 +34,46 @@ class TypeCheckerTest {
     }
 
     @Test
+    fun `map over vector returns vector of numbers`() {
+        val env = TypeEnv().extend("v", VectorType)
+        val expr = Expr.CallExpr(
+            Expr.Variable("map"),
+            listOf(
+                Expr.Variable("v"),
+                Expr.LambdaExpr(listOf("x"), Expr.Variable("x"))
+            )
+        )
+
+        val result = inferType(expr, env)
+        assertEquals(VectorType, result)
+    }
+
+    @Test
     fun `reduce infers accumulator type`() {
         val env = TypeEnv().extend("xs", ListType(NumberType))
         val expr = Expr.CallExpr(
             Expr.Variable("reduce"),
             listOf(
                 Expr.Variable("xs"),
+                Expr.NumberLiteral(0.0),
+                Expr.LambdaExpr(
+                    listOf("acc", "x"),
+                    Expr.Binary(Expr.Variable("acc"), plusToken(), Expr.Variable("x"))
+                )
+            )
+        )
+
+        val result = inferType(expr, env)
+        assertEquals(NumberType, result)
+    }
+
+    @Test
+    fun `reduce over vector returns number`() {
+        val env = TypeEnv().extend("v", VectorType)
+        val expr = Expr.CallExpr(
+            Expr.Variable("reduce"),
+            listOf(
+                Expr.Variable("v"),
                 Expr.NumberLiteral(0.0),
                 Expr.LambdaExpr(
                     listOf("acc", "x"),
@@ -73,6 +108,31 @@ class TypeCheckerTest {
         )
         assertEquals(
             PairType(ListType(NumberType), ListType(StringType)),
+            inferType(unzipExpr, env)
+        )
+    }
+
+    @Test
+    fun `zip vectors keeps numeric pair type and unzip returns vectors`() {
+        val env = TypeEnv()
+            .extend("a", VectorType)
+            .extend("b", VectorType)
+
+        val zipExpr = Expr.CallExpr(
+            Expr.Variable("zip"),
+            listOf(Expr.Variable("a"), Expr.Variable("b"))
+        )
+        val unzipExpr = Expr.CallExpr(
+            Expr.Variable("unzip"),
+            listOf(zipExpr)
+        )
+
+        assertEquals(
+            ListType(PairType(NumberType, NumberType)),
+            inferType(zipExpr, env)
+        )
+        assertEquals(
+            PairType(VectorType, VectorType),
             inferType(unzipExpr, env)
         )
     }
