@@ -57,12 +57,11 @@ object FileRunner {
         if (hadError) return
 
         try {
+            val lastValue = interpreter.executePipeline(statements)
             if (statements.size == 1 && statements.first() is org.example.parser.Stmt.Expression) {
-                val expr = (statements.first() as org.example.parser.Stmt.Expression).expression
-                val value = interpreter.evaluator.eval(expr, interpreter.environment)
-                println(interpreter.evaluator.stringify(value))
-            } else {
-                interpreter.interpret(statements)
+                if (lastValue != null) {
+                    println(interpreter.evaluator.stringify(lastValue))
+                }
             }
         } catch (e: MatrixLangRuntimeException) {
             println("Runtime error at line ${e.line}, column ${e.column}: ${e.message}")

@@ -9,7 +9,7 @@ Matrix_language — это DSL для матричных вычислений и
 - `src/main/kotlin/parser` — лексер, парсер, AST, интерпретатор, stdlib.
 - `src/main/kotlin/syntax` — справочный слой ключевых слов/операторов DSL.
 - `src/main/kotlin/type` — типовая модель и инференс для AST.
-- `src/main/kotlin/planner` — построение графа вычислений и оценка стоимости узлов.
+- `src/main/kotlin/planner` — граф вычислений, оценка стоимости и базовый execution pipeline.
 - `src/main/kotlin/cli` — запуск файлов и REPL.
 - `android-viewer` — TODO: модуля нет в репозитории (только планируется визуализация).
 
@@ -56,8 +56,9 @@ java -jar build/libs/matrix_language-1.0-SNAPSHOT.jar examples/map_reduce.matrix
 - `MultiplicationAlgorithm.PARALLEL` использует корутины на блоках.
 - выбор алгоритма задается через `MatMulConfig` или через stdlib `polyWith`.
 
-`planner` строит граф вычислений по AST и оценивает стоимость узлов, но движок
-исполнения графа пока отсутствует (TODO).
+`planner` строит граф вычислений по AST и оценивает стоимость узлов.
+Execution pipeline исполняет выражение через интерпретатор и может эмитить события по узлам графа.
+Параллельного планировщика AST пока нет.
 
 ## Android viewer
 TODO: отсутствует модуль `android-viewer` и формат JSON-событий исполнения.

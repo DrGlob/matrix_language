@@ -2,6 +2,7 @@ package org.example.type
 
 import org.example.parser.Expr
 import org.example.parser.MatrixLangRuntimeException
+import org.example.parser.Stmt
 import org.example.parser.Token
 import org.example.parser.TokenType
 import org.example.parser.runtimeError
@@ -51,8 +52,18 @@ private fun infer(expr: Expr, env: TypeEnv, expectedLambdaParams: List<Type>?): 
         is Expr.MethodCallExpr -> inferMethodCall(expr, env)
         is Expr.PropertyAccess -> inferProperty(expr, env)
         is Expr.Function -> {
-            val params = expr.params.map { NumberType }
-            FunctionType(params, UnitType)
+            val paramTypes = expr.params.map { NumberType }
+            var bodyEnv: TypeEnv = TypeEnv(parent = env)
+            for ((name, type) in expr.params.zip(paramTypes)) {
+                bodyEnv = bodyEnv.extend(name, type)
+            }
+            val bodyBlock = when (val body = expr.body) {
+                is Stmt.Block -> body
+                else -> Stmt.Block(listOf(body))
+            }
+            checkStatements(bodyBlock.statements, bodyEnv)
+            val returnType = inferFunctionReturnType(bodyBlock, bodyEnv)
+            FunctionType(paramTypes, returnType)
         }
         else -> UnitType
     }
@@ -138,6 +149,17 @@ private fun inferCall(expr: Expr.CallExpr, env: TypeEnv): Type {
             "reduce" -> inferReduce(expr.args, env)
             "zip" -> inferZip(expr.args, env)
             "unzip" -> inferUnzip(expr.args, env)
+            "filter" -> inferFilter(expr.args, env)
+            "compose" -> inferCompose(expr.args, env)
+            "zeros" -> inferZeros(expr.args, env)
+            "ones" -> inferOnes(expr.args, env)
+            "identity" -> inferIdentity(expr.args, env)
+            "transpose" -> inferTranspose(expr.args, env)
+            "rows" -> inferRows(expr.args, env)
+            "cols" -> inferCols(expr.args, env)
+            "norm" -> inferNorm(expr.args, env)
+            "poly" -> inferPoly(expr.args, env)
+            "polyWith" -> inferPolyWith(expr.args, env)
             else -> inferCallByType(expr, env)
         }
     }
@@ -166,6 +188,7 @@ private fun inferMethodCall(expr: Expr.MethodCallExpr, env: TypeEnv): Type {
         "reduce" -> inferReduce(listOf(expr.receiver) + expr.args, env)
         "zip" -> inferZip(listOf(expr.receiver) + expr.args, env)
         "unzip" -> inferUnzip(listOf(expr.receiver) + expr.args, env)
+        "filter" -> inferFilter(listOf(expr.receiver) + expr.args, env)
         else -> throw runtimeError("type error: unknown method '${expr.method}'", token = null)
     }
 }
@@ -251,6 +274,157 @@ private fun inferUnzip(args: List<Expr>, env: TypeEnv): Type {
         }
     }
     throw typeError("List<Pair<..>>", inputType, dummyToken("unzip"))
+}
+
+private fun inferFilter(args: List<Expr>, env: TypeEnv): Type {
+    val target = args.getOrNull(0) ?: throw runtimeError("type error: filter expects target")
+    val fnExpr = args.getOrNull(1) ?: throw runtimeError("type error: filter expects predicate")
+    val targetType = infer(target, env, null)
+
+    val elemType = collectionElementType(targetType, "filter")
+    val fnType = inferFunctionForMap(fnExpr, env, elemType)
+    if (fnType.returnType != BoolType) {
+        throw typeError(BoolType, fnType.returnType, token = null)
+    }
+
+    return when (targetType) {
+        is ListType -> targetType
+        VectorType -> VectorType
+        MatrixType -> MatrixType
+        else -> throw typeError("List, Vector or Matrix", targetType, dummyToken("filter"))
+    }
+}
+
+private fun inferCompose(args: List<Expr>, env: TypeEnv): Type {
+    val fExpr = args.getOrNull(0) ?: throw runtimeError("type error: compose expects f")
+    val gExpr = args.getOrNull(1) ?: throw runtimeError("type error: compose expects g")
+
+    val fType = infer(fExpr, env, null) as? FunctionType
+        ?: throw typeError("Function", infer(fExpr, env, null), dummyToken("compose"))
+    val gType = infer(gExpr, env, null) as? FunctionType
+        ?: throw typeError("Function", infer(gExpr, env, null), dummyToken("compose"))
+
+    if (fType.paramTypes.size != 1 || gType.paramTypes.size != 1) {
+        throw runtimeError("type error: compose expects unary functions")
+    }
+    if (fType.paramTypes.first() != gType.returnType) {
+        throw runtimeError(
+            "type error: compose expects f(${typeName(gType.returnType)}) but got f(${typeName(fType.paramTypes.first())})"
+        )
+    }
+    return FunctionType(listOf(gType.paramTypes.first()), fType.returnType)
+}
+
+private fun inferZeros(args: List<Expr>, env: TypeEnv): Type =
+    inferMatrixFactory("zeros", args, env)
+
+private fun inferOnes(args: List<Expr>, env: TypeEnv): Type =
+    inferMatrixFactory("ones", args, env)
+
+private fun inferMatrixFactory(name: String, args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 2) {
+        throw runtimeError("type error: $name expects 2 number arguments", dummyToken(name))
+    }
+    val rowsType = infer(args[0], env, null)
+    val colsType = infer(args[1], env, null)
+    if (rowsType != NumberType || colsType != NumberType) {
+        throw runtimeError("type error: $name expects (Number, Number)", dummyToken(name))
+    }
+    return MatrixType
+}
+
+private fun inferIdentity(args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 1) {
+        throw runtimeError("type error: identity expects 1 number argument", dummyToken("identity"))
+    }
+    val sizeType = infer(args[0], env, null)
+    if (sizeType != NumberType) {
+        throw typeError(NumberType, sizeType, dummyToken("identity"))
+    }
+    return MatrixType
+}
+
+private fun inferTranspose(args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 1) {
+        throw runtimeError("type error: transpose expects 1 matrix argument", dummyToken("transpose"))
+    }
+    val argType = infer(args[0], env, null)
+    if (argType != MatrixType) {
+        throw typeError(MatrixType, argType, dummyToken("transpose"))
+    }
+    return MatrixType
+}
+
+private fun inferRows(args: List<Expr>, env: TypeEnv): Type =
+    inferMatrixPropertyCall("rows", args, env)
+
+private fun inferCols(args: List<Expr>, env: TypeEnv): Type =
+    inferMatrixPropertyCall("cols", args, env)
+
+private fun inferMatrixPropertyCall(name: String, args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 1) {
+        throw runtimeError("type error: $name expects 1 matrix argument", dummyToken(name))
+    }
+    val argType = infer(args[0], env, null)
+    if (argType != MatrixType) {
+        throw typeError(MatrixType, argType, dummyToken(name))
+    }
+    return NumberType
+}
+
+private fun inferNorm(args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 1) {
+        throw runtimeError("type error: norm expects 1 matrix argument", dummyToken("norm"))
+    }
+    val argType = infer(args[0], env, null)
+    if (argType != MatrixType) {
+        throw typeError(MatrixType, argType, dummyToken("norm"))
+    }
+    return NumberType
+}
+
+private fun inferPoly(args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 2) {
+        throw runtimeError("type error: poly expects 2 arguments", dummyToken("poly"))
+    }
+    val matrixType = infer(args[0], env, null)
+    if (matrixType != MatrixType) {
+        throw typeError(MatrixType, matrixType, dummyToken("poly"))
+    }
+    val coeffType = infer(args[1], env, null)
+    val ok = when (coeffType) {
+        is ListType -> coeffType.elementType == NumberType
+        MatrixType, VectorType -> true
+        else -> false
+    }
+    if (!ok) {
+        throw runtimeError("type error: poly expects coefficients as List<Number> or Matrix", dummyToken("poly"))
+    }
+    return MatrixType
+}
+
+private fun inferPolyWith(args: List<Expr>, env: TypeEnv): Type {
+    if (args.size != 3) {
+        throw runtimeError("type error: polyWith expects 3 arguments", dummyToken("polyWith"))
+    }
+    val matrixType = infer(args[0], env, null)
+    if (matrixType != MatrixType) {
+        throw typeError(MatrixType, matrixType, dummyToken("polyWith"))
+    }
+    val coeffType = infer(args[1], env, null)
+    val ok = when (coeffType) {
+        is ListType -> coeffType.elementType == NumberType
+        MatrixType, VectorType -> true
+        else -> false
+    }
+    if (!ok) {
+        throw runtimeError("type error: polyWith expects coefficients as List<Number> or Matrix", dummyToken("polyWith"))
+    }
+    val algoType = infer(args[2], env, null)
+    if (algoType != StringType) {
+        throw typeError(StringType, algoType, dummyToken("polyWith"))
+    }
+    return MatrixType
 }
 
 private fun inferFunctionForMap(expr: Expr, env: TypeEnv, paramType: Type): FunctionType {
@@ -342,3 +516,91 @@ private fun typeName(type: Type): String = when (type) {
 
 private fun dummyToken(name: String): Token =
     Token(TokenType.IDENTIFIER, name, null, 0, 0)
+
+/**
+ * Проверка списка statement-ов с накоплением окружения типов.
+ */
+fun checkStatements(statements: List<Stmt>, env: TypeEnv): TypeEnv {
+    var current = env
+    for (stmt in statements) {
+        current = checkStatement(stmt, current)
+    }
+    return current
+}
+
+private fun checkStatement(stmt: Stmt, env: TypeEnv): TypeEnv {
+    return when (stmt) {
+        is Stmt.Expression -> {
+            inferType(stmt.expression, env)
+            env
+        }
+        is Stmt.Print -> {
+            inferType(stmt.expression, env)
+            env
+        }
+        is Stmt.Var -> {
+            val initializerType = stmt.initializer?.let { inferType(it, env) } ?: UnitType
+            env.extend(stmt.name, initializerType)
+        }
+        is Stmt.Block -> {
+            checkStatements(stmt.statements, TypeEnv(parent = env))
+            env
+        }
+        is Stmt.If -> {
+            val condType = inferType(stmt.condition, env)
+            if (condType != BoolType) {
+                throw typeError(BoolType, condType, token = null)
+            }
+            checkStatement(stmt.thenBranch, TypeEnv(parent = env))
+            stmt.elseBranch?.let { checkStatement(it, TypeEnv(parent = env)) }
+            env
+        }
+        is Stmt.Function -> {
+            val paramTypes = stmt.params.map { NumberType }
+            val placeholder = FunctionType(paramTypes, UnitType)
+            val withFn = env.extend(stmt.name, placeholder)
+            var bodyEnv: TypeEnv = TypeEnv(parent = withFn)
+            for ((name, type) in stmt.params.zip(paramTypes)) {
+                bodyEnv = bodyEnv.extend(name, type)
+            }
+            checkStatements(stmt.body.statements, bodyEnv)
+            val returnType = inferFunctionReturnType(stmt.body, bodyEnv)
+            env.extend(stmt.name, FunctionType(paramTypes, returnType))
+        }
+        is Stmt.Return -> {
+            stmt.value?.let { inferType(it, env) }
+            env
+        }
+    }
+}
+
+private fun inferFunctionReturnType(body: Stmt.Block, env: TypeEnv): Type {
+    val returns = mutableListOf<Type>()
+    for (statement in body.statements) {
+        collectReturnTypes(statement, env, returns)
+    }
+    if (returns.isEmpty()) return UnitType
+    val first = returns.first()
+    for (type in returns) {
+        if (type != first) {
+            throw runtimeError("type error: inconsistent return types in function body")
+        }
+    }
+    return first
+}
+
+private fun collectReturnTypes(stmt: Stmt, env: TypeEnv, out: MutableList<Type>) {
+    when (stmt) {
+        is Stmt.Return -> {
+            val type = stmt.value?.let { inferType(it, env) } ?: UnitType
+            out.add(type)
+        }
+        is Stmt.Block -> stmt.statements.forEach { collectReturnTypes(it, env, out) }
+        is Stmt.If -> {
+            collectReturnTypes(stmt.thenBranch, env, out)
+            stmt.elseBranch?.let { collectReturnTypes(it, env, out) }
+        }
+        is Stmt.Function -> Unit
+        is Stmt.Expression, is Stmt.Print, is Stmt.Var -> Unit
+    }
+}
