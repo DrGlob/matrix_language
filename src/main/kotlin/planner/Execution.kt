@@ -7,22 +7,13 @@ import org.example.parser.MatrixLangRuntimeException
 import org.example.parser.Value
 
 /**
- * Состояние узла исполнения AST.
- */
-enum class AstNodeStatus {
-    PENDING,
-    RUNNING,
-    COMPLETED,
-    FAILED
-}
-
-/**
  * Событие исполнения узла для внешних слушателей/логов.
  */
 data class AstExecutionEvent(
-    val nodeId: String,
+    val nodeId: AstExecNodeId,
     val status: AstNodeStatus,
-    val timestampMillis: Long
+    val timestampMillis: Long,
+    val error: Throwable? = null
 )
 
 /**
@@ -51,7 +42,8 @@ object NoopExecutionSink : AstExecutionSink {
  */
 class LoggingExecutionSink : AstExecutionSink {
     override fun record(event: AstExecutionEvent) {
-        println("[exec] node=${event.nodeId} status=${event.status} ts=${event.timestampMillis}")
+        val errText = event.error?.let { " error=${it.message}" } ?: ""
+        println("[exec] node=${event.nodeId.value} status=${event.status} ts=${event.timestampMillis}$errText")
     }
 }
 
@@ -63,18 +55,13 @@ class SinkBackedListener(private val sink: AstExecutionSink) : AstExecutionListe
 }
 
 /**
- * Узел исполнения, соответствующий узлу графа планировщика.
- */
-data class AstExecNode(
-    val id: String,
-    val graphNode: GraphNode,
-    var status: AstNodeStatus = AstNodeStatus.PENDING
-)
-
-/**
  * Настройки пайплайна исполнения AST.
  */
 data class AstExecutionConfig(
+    val corePoolSize: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
+    val maxPoolSize: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1) * 2,
+    val keepAliveMillis: Long = 1_000L,
+    val queueCapacity: Int = 128,
     val enableTypeCheck: Boolean = true,
     val enablePlanning: Boolean = true
 )
@@ -94,7 +81,31 @@ object AstExecMapper {
         }
 
         visit(plan.root)
-        return ordered.map { AstExecNode(it.id, it) }
+
+        val dependencies = mutableMapOf<AstExecNodeId, MutableList<AstExecNodeId>>()
+        val children = mutableMapOf<AstExecNodeId, MutableList<AstExecNodeId>>()
+
+        for (node in ordered) {
+            val nodeId = AstExecNodeId(node.id)
+            if (!dependencies.containsKey(nodeId)) dependencies[nodeId] = mutableListOf()
+            if (!children.containsKey(nodeId)) children[nodeId] = mutableListOf()
+
+            node.inputs.forEach { input ->
+                val inputId = AstExecNodeId(input.id)
+                dependencies.getOrPut(nodeId) { mutableListOf() }.add(inputId)
+                children.getOrPut(inputId) { mutableListOf() }.add(nodeId)
+            }
+        }
+
+        return ordered.map { node ->
+            val nodeId = AstExecNodeId(node.id)
+            AstExecNode(
+                id = nodeId,
+                dependencies = dependencies[nodeId].orEmpty(),
+                children = children[nodeId].orEmpty(),
+                task = { null }
+            )
+        }
     }
 }
 
@@ -114,35 +125,32 @@ class AstExecutionEngine(private val evaluator: Evaluator) {
     ): Value {
         val eventListener = listener ?: sink?.let { SinkBackedListener(it) }
         val rootNode = nodes.lastOrNull()
+        val runtimeStates = mutableMapOf<AstExecNodeId, AstNodeRuntimeState>()
 
-        fun emit(node: AstExecNode, status: AstNodeStatus) {
-            node.status = status
+        fun emit(nodeId: AstExecNodeId, status: AstNodeStatus, error: Throwable? = null) {
+            runtimeStates[nodeId] = AstNodeRuntimeState(nodeId, status, error)
             eventListener?.onEvent(
                 AstExecutionEvent(
-                    nodeId = node.id,
+                    nodeId = nodeId,
                     status = status,
-                    timestampMillis = System.currentTimeMillis()
+                    timestampMillis = System.currentTimeMillis(),
+                    error = error
                 )
             )
         }
 
-        if (rootNode != null) {
-            emit(rootNode, AstNodeStatus.RUNNING)
-        }
+        nodes.forEach { emit(it.id, AstNodeStatus.PENDING) }
+        rootNode?.let { emit(it.id, AstNodeStatus.RUNNING) }
 
         return try {
             val result = evaluator.eval(rootExpr, env)
-            nodes.forEach { emit(it, AstNodeStatus.COMPLETED) }
+            nodes.forEach { emit(it.id, AstNodeStatus.SUCCESS) }
             result
         } catch (e: MatrixLangRuntimeException) {
-            if (rootNode != null) {
-                emit(rootNode, AstNodeStatus.FAILED)
-            }
+            rootNode?.let { emit(it.id, AstNodeStatus.ERROR, e) }
             throw e
         } catch (e: Exception) {
-            if (rootNode != null) {
-                emit(rootNode, AstNodeStatus.FAILED)
-            }
+            rootNode?.let { emit(it.id, AstNodeStatus.ERROR, e) }
             throw e
         }
     }
