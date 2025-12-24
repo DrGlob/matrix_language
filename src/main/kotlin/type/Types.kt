@@ -36,3 +36,19 @@ class TypeEnv(
     fun extend(name: String, type: Type): TypeEnv =
         TypeEnv(mapOf(name to type), this)
 }
+
+/**
+ * Строковое представление типа для вывода в REPL и сообщениях.
+ */
+fun formatType(type: Type): String = when (type) {
+    NumberType -> "Number"
+    BoolType -> "Bool"
+    StringType -> "String"
+    MatrixType -> "Matrix"
+    VectorType -> "Vector"
+    is ListType -> "List<${formatType(type.elementType)}>"
+    is PairType -> "Pair<${formatType(type.first)}, ${formatType(type.second)}>"
+    is FunctionType -> "(${type.paramTypes.joinToString(", ") { formatType(it) }}) -> ${formatType(type.returnType)}"
+    UnitType -> "Unit"
+    else -> "Unknown"
+}

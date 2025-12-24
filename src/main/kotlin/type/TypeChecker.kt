@@ -501,18 +501,7 @@ private fun typeError(expected: Type, actual: Type, token: Token?): MatrixLangRu
 private fun typeError(expected: String, actual: Type, token: Token?): MatrixLangRuntimeException =
     runtimeError("type error: expected $expected, got ${typeName(actual)}.", token)
 
-private fun typeName(type: Type): String = when (type) {
-    NumberType -> "Number"
-    BoolType -> "Bool"
-    StringType -> "String"
-    MatrixType -> "Matrix"
-    VectorType -> "Vector"
-    is ListType -> "List<${typeName(type.elementType)}>"
-    is PairType -> "Pair<${typeName(type.first)}, ${typeName(type.second)}>"
-    is FunctionType -> "(${type.paramTypes.joinToString(", ") { typeName(it) }}) -> ${typeName(type.returnType)}"
-    UnitType -> "Unit"
-    else -> "Unknown"
-}
+private fun typeName(type: Type): String = formatType(type)
 
 private fun dummyToken(name: String): Token =
     Token(TokenType.IDENTIFIER, name, null, 0, 0)
@@ -576,8 +565,9 @@ private fun checkStatement(stmt: Stmt, env: TypeEnv): TypeEnv {
 
 private fun inferFunctionReturnType(body: Stmt.Block, env: TypeEnv): Type {
     val returns = mutableListOf<Type>()
+    var currentEnv = env
     for (statement in body.statements) {
-        collectReturnTypes(statement, env, returns)
+        currentEnv = collectReturnTypes(statement, currentEnv, returns)
     }
     if (returns.isEmpty()) return UnitType
     val first = returns.first()
@@ -589,18 +579,37 @@ private fun inferFunctionReturnType(body: Stmt.Block, env: TypeEnv): Type {
     return first
 }
 
-private fun collectReturnTypes(stmt: Stmt, env: TypeEnv, out: MutableList<Type>) {
-    when (stmt) {
+private fun collectReturnTypes(stmt: Stmt, env: TypeEnv, out: MutableList<Type>): TypeEnv {
+    return when (stmt) {
+        is Stmt.Expression -> {
+            inferType(stmt.expression, env)
+            env
+        }
+        is Stmt.Print -> {
+            inferType(stmt.expression, env)
+            env
+        }
+        is Stmt.Var -> {
+            val initializerType = stmt.initializer?.let { inferType(it, env) } ?: UnitType
+            env.extend(stmt.name, initializerType)
+        }
+        is Stmt.Block -> {
+            var scoped = TypeEnv(parent = env)
+            for (statement in stmt.statements) {
+                scoped = collectReturnTypes(statement, scoped, out)
+            }
+            env
+        }
+        is Stmt.If -> {
+            collectReturnTypes(stmt.thenBranch, TypeEnv(parent = env), out)
+            stmt.elseBranch?.let { collectReturnTypes(it, TypeEnv(parent = env), out) }
+            env
+        }
+        is Stmt.Function -> env
         is Stmt.Return -> {
             val type = stmt.value?.let { inferType(it, env) } ?: UnitType
             out.add(type)
+            env
         }
-        is Stmt.Block -> stmt.statements.forEach { collectReturnTypes(it, env, out) }
-        is Stmt.If -> {
-            collectReturnTypes(stmt.thenBranch, env, out)
-            stmt.elseBranch?.let { collectReturnTypes(it, env, out) }
-        }
-        is Stmt.Function -> Unit
-        is Stmt.Expression, is Stmt.Print, is Stmt.Var -> Unit
     }
 }

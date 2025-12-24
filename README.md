@@ -29,6 +29,10 @@ REPL:
 ./gradlew run
 ```
 
+Команды REPL:
+- `:type <expr>` — вывести тип выражения.
+- `:plan <expr>` — показать краткий план графа (узлы и зависимости).
+
 Запуск файла .matrix:
 ```bash
 ./gradlew run -Pargs="examples/map_reduce.matrix"
@@ -59,6 +63,8 @@ java -jar build/libs/matrix_language-1.0-SNAPSHOT.jar examples/map_reduce.matrix
 `planner` строит граф вычислений по AST и оценивает стоимость узлов.
 Execution pipeline исполняет выражение через интерпретатор и может эмитить события по узлам графа.
 Параллельного планировщика AST пока нет.
+
+Pipeline в CLI/REPL: parse → type-check → plan → execute (для выражений используется планировщик, для statements — обычное выполнение).
 
 ## Android viewer
 TODO: отсутствует модуль `android-viewer` и формат JSON-событий исполнения.
