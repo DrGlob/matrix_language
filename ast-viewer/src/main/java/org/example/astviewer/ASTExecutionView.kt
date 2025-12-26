@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
 import kotlin.math.max
 
@@ -99,7 +100,6 @@ class ASTExecutionView @JvmOverloads constructor(
         levelRows = buildLevels(nodes)
 
         val radius = nodeRadius()
-        val labelGap = radius + textPaint.textSize
         val availableHeight = height - paddingTop - paddingBottom
         val minVertical = radius * 3f + textPaint.textSize
         val verticalSpacing = max(minVertical, availableHeight / max(1, levelRows.size).toFloat())
@@ -162,7 +162,11 @@ class ASTExecutionView @JvmOverloads constructor(
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
-    private fun sp(value: Float): Float = value * resources.displayMetrics.scaledDensity
+    private fun sp(value: Float): Float = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        value,
+        resources.displayMetrics
+    )
 
     private fun colorForState(state: AstNodeRuntimeState): Int {
         return when (state) {

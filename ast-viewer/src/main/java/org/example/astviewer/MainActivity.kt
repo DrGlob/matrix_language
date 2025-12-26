@@ -1,18 +1,21 @@
 package org.example.astviewer
 
 import android.os.Bundle
+import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : AppCompatActivity() {
     private lateinit var executionView: ASTExecutionView
+    private lateinit var startButton: Button
     private lateinit var viewModel: AstViewerViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        executionView = findViewById(R.id.executionView)
+        executionView = findViewById(R.id.astView)
+        startButton = findViewById(R.id.startButton)
         viewModel = ViewModelProvider(this)[AstViewerViewModel::class.java]
 
         viewModel.graph.observe(this) { nodes ->
@@ -22,6 +25,8 @@ class MainActivity : AppCompatActivity() {
             executionView.states = states
         }
 
-        assets.open("events.jsonl").use { viewModel.loadGraphAndEvents(it) }
+        startButton.setOnClickListener {
+            assets.open("events.jsonl").use { viewModel.loadGraphAndEvents(it) }
+        }
     }
 }
