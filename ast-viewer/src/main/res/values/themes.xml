@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.AstViewer" parent="Theme.AppCompat.Light.NoActionBar" />
+</resources>

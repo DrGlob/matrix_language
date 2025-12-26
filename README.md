@@ -11,7 +11,7 @@ Matrix_language — это DSL для матричных вычислений и
 - `src/main/kotlin/type` — типовая модель и инференс для AST.
 - `src/main/kotlin/planner` — граф вычислений, оценка стоимости и базовый execution pipeline.
 - `src/main/kotlin/cli` — запуск файлов и REPL.
-- `android-viewer` — TODO: модуля нет в репозитории (только планируется визуализация).
+- `ast-viewer` — Android-приложение для визуализации событий AST (replay-режим).
 
 ## Что за язык и зачем
 Язык .matrix позволяет описывать матричные вычисления декларативно:
@@ -66,9 +66,23 @@ Execution pipeline исполняет выражение через интерп
 
 Pipeline в CLI/REPL: parse → type-check → plan → execute (для выражений используется планировщик, для statements — обычное выполнение).
 
-## Android viewer
-TODO: отсутствует модуль `android-viewer` и формат JSON-событий исполнения.
-Предполагаемая цель — визуализация DAG/AST событий по replay-файлу.
+## Android viewer (ast-viewer)
+Модуль `ast-viewer` — отдельный Android-проект (отдельный Gradle build), который ничего не вычисляет.
+Оно читает JSONL-лог событий и визуализирует состояния узлов через кастомный `ASTExecutionView`.
+
+Формат `events.jsonl` (JSON Lines):
+- строка с графом:
+  `{"type":"graph","nodes":[{"id":"add_1","op":"Add","deps":["a","b"]}]}`
+- строка с событием:
+  `{"type":"event","nodeId":"add_1","status":"RUNNING","timestampMillis":1700000000000}`
+  статусы: `PENDING`, `RUNNING`, `SUCCESS`, `ERROR`, `CANCELLED`, `SKIPPED`.
+
+Пример лога лежит в `ast-viewer/src/main/assets/events.jsonl`.
+Сборка:
+```bash
+./gradlew -p ast-viewer assembleDebug
+```
+Для запуска — открой `ast-viewer` как отдельный Gradle-проект в Android Studio и запусти приложение.
 
 ## Docker
 1) Собрать образ:
